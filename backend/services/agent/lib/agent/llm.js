@@ -51,6 +51,15 @@ export const PROVIDER_META = Object.entries(PROVIDERS).map(([id, p]) => ({
 
 // Desktop app: the user supplies their own key. The stored config is applied
 // onto process.env so the existing provider logic (which reads env) picks it up.
+// The provider that would actually answer right now, based on env (which
+// includes any stored key already applied). Null when nothing is configured.
+export const activeProvider = () => {
+  const names = configuredNames();
+  if (!names.length) return null;
+  const pref = preferredName();
+  return names.includes(pref) ? pref : names[0];
+};
+
 export const applyProviderConfig = ({ provider, apiKey, accountId, model, visionModel } = {}) => {
   if (!provider || !PROVIDERS[provider]) return false;
   const p = PROVIDERS[provider];

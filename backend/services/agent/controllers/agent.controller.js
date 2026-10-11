@@ -19,7 +19,7 @@ import {
   deleteConversationsForTarget,
 } from "../lib/agent/memory.js";
 import { limitsFor } from "../lib/agent/limits.js";
-import { resolveProvider, applyProviderConfig, PROVIDER_META } from "../lib/agent/llm.js";
+import { resolveProvider, applyProviderConfig, PROVIDER_META, activeProvider } from "../lib/agent/llm.js";
 import { getLlmConfig, setLlmConfig } from "../data/settings.js";
 import { validateAttachments } from "../lib/agent/imageAttachments.js";
 
@@ -233,12 +233,13 @@ export const deleteProjectHandler = async (req, res, next) => {
 // GET /settings/llm — the current AI provider setup (never returns the key).
 export const getLlmSettings = (_req, res) => {
   const cfg = getLlmConfig();
+  const active = activeProvider(); // reflects env too (incl. an applied stored key)
   res.json({
-    configured: Boolean(cfg.provider && cfg.apiKey),
-    provider: cfg.provider,
-    model: cfg.model,
+    configured: Boolean(active),
+    provider: cfg.provider || active,
+    model: cfg.model || process.env.LLM_MODEL || null,
     accountId: cfg.accountId,
-    hasKey: Boolean(cfg.apiKey),
+    hasKey: Boolean(cfg.apiKey), // the stored key the form can keep
     providers: PROVIDER_META,
   });
 };
