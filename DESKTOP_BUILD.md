@@ -36,9 +36,16 @@ No hosting, no cost to us, no shared keys.
     - [x] **B2 — project**: the standalone project service is unused (gateway
           doesn't proxy it; the agent manages projects itself), so the desktop
           app simply doesn't run it. No conversion needed.
-    - [ ] **B3 — agent** (agentRun + consent models — consent is the most complex:
-          TTL + isCurrentlyValid + multiple sub-models). This is the last data piece;
-          after it the app needs NO MongoDB at all.
+    - [~] **B3 — agent** (agentRun + consent). The last data piece.
+      - [x] Data layer built + unit-tested: tables for account_consent,
+            target_authorization, agent_runs, agent_run_steps; modules
+            `agent/data/consent.js` and `agent/data/agentRuns.js` (returned
+            objects keep `isCurrentlyValid()`/`versionOf()`). Nothing imports
+            them yet, so the app is unchanged.
+      - [ ] Wiring: swap the ~40 call sites across ~11 files (controllers,
+            orchestrator, approvals, executor, runLog, permissions, projects,
+            requireConsent) and drop MongoDB from the agent startup. Then re-test
+            the full flow in dev. After this the app needs NO MongoDB at all.
 
 ## Central user tracking (separate, after storage)
 Identity + activity only, admin-only. Firebase Auth already lists every user

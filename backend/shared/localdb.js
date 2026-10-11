@@ -74,6 +74,80 @@ db.exec(`
     last_sent_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS account_consent (
+    user_uid TEXT PRIMARY KEY,
+    user_email TEXT DEFAULT '',
+    accepted TEXT DEFAULT '[]',              -- JSON [{documentId,version,acceptedAt}]
+    status TEXT DEFAULT 'active',
+    withdrawn_at INTEGER,
+    disabled_capabilities TEXT DEFAULT '[]', -- JSON [scopeId]
+    ip TEXT DEFAULT '',
+    user_agent TEXT DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS target_authorization (
+    id TEXT PRIMARY KEY,
+    user_uid TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    target_label TEXT DEFAULT '',
+    attestation_owner INTEGER DEFAULT 1,     -- boolean
+    attestation_basis TEXT,
+    scopes TEXT DEFAULT '[]',                -- JSON
+    always_allow TEXT DEFAULT '[]',          -- JSON
+    authorization_version TEXT,
+    status TEXT DEFAULT 'active',
+    expires_at INTEGER NOT NULL,
+    revoked_at INTEGER,
+    ip TEXT DEFAULT '',
+    user_agent TEXT DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_auth_user ON target_authorization (user_uid, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_auth_target ON target_authorization (user_uid, target_type, target_id);
+
+  CREATE TABLE IF NOT EXISTS agent_runs (
+    id TEXT PRIMARY KEY,
+    user_uid TEXT NOT NULL,
+    authorization_id TEXT,
+    target_type TEXT,
+    target_id TEXT,
+    target_label TEXT DEFAULT '',
+    conversation_id TEXT,
+    task TEXT,
+    continued_by TEXT,
+    context_limit INTEGER DEFAULT 0,
+    context_tokens_used INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'running',
+    pending_approval TEXT,                   -- JSON or NULL
+    tools_offered TEXT DEFAULT '[]',         -- JSON
+    result TEXT DEFAULT '',
+    error TEXT DEFAULT '',
+    provider TEXT DEFAULT '',
+    model TEXT DEFAULT '',
+    finished_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_runs_user ON agent_runs (user_uid, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_runs_conv ON agent_runs (user_uid, conversation_id);
+
+  CREATE TABLE IF NOT EXISTS agent_run_steps (
+    run_id TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    tool TEXT DEFAULT '',
+    args TEXT,                               -- JSON or NULL
+    ok INTEGER,                              -- boolean or NULL
+    content TEXT DEFAULT '',
+    duration_ms INTEGER,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (run_id, seq)
+  );
 `);
 
 // ---------------------------------------------------------------------------
