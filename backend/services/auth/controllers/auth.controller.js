@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { getAuth } from "firebase-admin/auth";
 import { app } from "../config/firebase.js";
-import EmailCode from "../models/emailCode.model.js";
+import { getCode, upsertCode, deleteCode, countAttempt, consumeCode } from "../data/emailCodes.js";
 import { sendVerificationEmail } from "../utils/mailer.js";
 
 const CODE_LENGTH = 8;
@@ -53,7 +53,7 @@ export const sendCode = async (req, res) => {
     return res.status(400).json({ message: "Enter a valid email address." });
   }
 
-  const existing = await EmailCode.findOne({ email });
+  const existing = getCode(email);
   if (existing) {
     const waitMs = existing.lastSentAt.getTime() + RESEND_COOLDOWN_SECONDS * 1000 - Date.now();
     if (waitMs > 0) {
@@ -67,21 +67,17 @@ export const sendCode = async (req, res) => {
 
   const code = generateCode();
   const now = new Date();
-  await EmailCode.findOneAndUpdate(
-    { email },
-    {
-      codeHash: hashCode(email, code),
-      attempts: 0,
-      lastSentAt: now,
-      expiresAt: new Date(now.getTime() + CODE_TTL_MINUTES * 60 * 1000),
-    },
-    { upsert: true }
-  );
+  upsertCode(email, {
+    codeHash: hashCode(email, code),
+    attempts: 0,
+    lastSentAt: now,
+    expiresAt: new Date(now.getTime() + CODE_TTL_MINUTES * 60 * 1000),
+  });
 
   try {
     await sendVerificationEmail(email, code, CODE_TTL_MINUTES);
   } catch (err) {
-    await EmailCode.deleteOne({ email });
+    deleteCode(email);
     console.error("Failed to send sign-in code:", err);
     return res.status(502).json({ message: "We couldn't send the email. Please try again." });
   }
@@ -101,11 +97,7 @@ export const verifyCode = async (req, res) => {
   }
 
   // Count the attempt up front so parallel guesses can't go over the limit.
-  const record = await EmailCode.findOneAndUpdate(
-    { email, expiresAt: { $gt: new Date() }, attempts: { $lt: MAX_ATTEMPTS } },
-    { $inc: { attempts: 1 } },
-    { returnDocument: "after" }
-  );
+  const record = countAttempt(email, MAX_ATTEMPTS);
   if (!record) {
     return res.status(400).json({ message: "This code has expired. Request a new one." });
   }
@@ -118,7 +110,7 @@ export const verifyCode = async (req, res) => {
   if (!matches) {
     const attemptsLeft = MAX_ATTEMPTS - record.attempts;
     if (attemptsLeft <= 0) {
-      await EmailCode.deleteOne({ _id: record._id });
+      deleteCode(email);
       return res.status(429).json({ message: "Too many incorrect attempts. Request a new code." });
     }
     return res.status(400).json({
@@ -127,7 +119,7 @@ export const verifyCode = async (req, res) => {
   }
 
   // Each code works once.
-  const consumed = await EmailCode.findOneAndDelete({ _id: record._id, codeHash: record.codeHash });
+  const consumed = consumeCode(email, record.codeHash);
   if (!consumed) {
     return res.status(400).json({ message: "This code has expired. Request a new one." });
   }

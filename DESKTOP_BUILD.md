@@ -29,8 +29,18 @@ No hosting, no cost to us, no shared keys.
         `attachUser.js`); `conversations`/`messages` tables (agent `memory.js`
         fully rewritten). Redis removed from both services' startup. App still
         uses MongoDB for the 5 models — testable now (login + chat + history).
-  - [ ] **Step B — MongoDB → SQLite** (user, emailCode, project, agentRun,
-        consent models). After this the app is fully local.
+  - [~] **Step B — MongoDB → SQLite** (done service by service so each stays runnable):
+    - [x] **B1 — auth** (user + emailCode → `data/users.js`, `data/emailCodes.js`;
+          `users`/`email_codes` tables). Auth now needs NO MongoDB and NO Redis.
+          Tested incl. expiry, max-attempts, one-time consume.
+    - [ ] **B2 — project** (project model).
+    - [ ] **B3 — agent** (agentRun + consent models — consent is the most complex:
+          TTL + isCurrentlyValid + multiple sub-models).
+
+## Central user tracking (separate, after storage)
+Identity + activity only, admin-only. Firebase Auth already lists every user
+(name/email/login). Add lightweight activity telemetry to Firestore (client
+writes, no server, no shipped secret) with rules allowing admin-only reads.
 - [ ] **Phase 3 — First-run key setup UI**
   - Screen to choose provider + paste the user's own key; stored in the OS
     keychain (or encrypted locally) and passed to the agent service.

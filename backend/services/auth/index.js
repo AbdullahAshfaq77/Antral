@@ -1,6 +1,5 @@
 import "dotenv/config";
 import express from "express";
-import connectDb from "./config/db.js"
 import authRoutes from "./routes/auth.routes.js"
 
 const port = process.env.PORT
@@ -21,9 +20,8 @@ app.use((err, req, res, next) => {
 })
 
 const start = async () => {
-    // Sessions now live in the shared local SQLite database (opened on first
-    // use), so no Redis connection is needed.
-    await connectDb()
+    // Users, sessions and sign-in codes now live in the shared local SQLite
+    // database (opened on first use), so no MongoDB or Redis is needed.
     app.listen(port, () => {
         console.log(`server started at ${port}`)
     }).on("error", (error) => {

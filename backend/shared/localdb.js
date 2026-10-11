@@ -51,6 +51,29 @@ db.exec(`
     tools TEXT,                   -- JSON array, or NULL
     PRIMARY KEY (uid, conv_id, seq)
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    firebase_uid TEXT PRIMARY KEY,
+    name TEXT DEFAULT '',
+    first_name TEXT DEFAULT '',
+    last_name TEXT DEFAULT '',
+    date_of_birth TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    photo_url TEXT,
+    provider TEXT DEFAULT 'email',
+    status TEXT DEFAULT 'active',
+    last_login_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS email_codes (
+    email TEXT PRIMARY KEY,
+    code_hash TEXT NOT NULL,
+    attempts INTEGER DEFAULT 0,
+    last_sent_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
 `);
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import User from "../models/user.model.js";
+import { upsertUserProfile } from "../data/users.js";
 import { updateSession } from "../utils/sessions.js";
 
 const isDateOfBirth = (value) => {
@@ -47,23 +47,14 @@ export const saveProfile = async (req, res) => {
   }
 
   const name = [firstName, lastName].filter(Boolean).join(" ");
-  await User.findOneAndUpdate(
-    { firebaseUid: req.session.uid },
-    {
-      $set: {
-        firstName,
-        lastName,
-        dateOfBirth,
-        name,
-        email: req.session.email,
-        provider: req.session.provider,
-      },
-      $setOnInsert: {
-        firebaseUid: req.session.uid,
-      },
-    },
-    { upsert: true, runValidators: true, setDefaultsOnInsert: true }
-  );
+  upsertUserProfile(req.session.uid, {
+    firstName,
+    lastName,
+    dateOfBirth,
+    name,
+    email: req.session.email,
+    provider: req.session.provider,
+  });
 
   const updatedSession = { ...req.session, firstName, lastName, dateOfBirth };
   await updateSession(req.sessionId, updatedSession);

@@ -1,6 +1,6 @@
 import { getAuth } from "firebase-admin/auth";
 import { app } from "../config/firebase.js";
-import User from "../models/user.model.js";
+import { getUserByUid } from "../data/users.js";
 import {
   clearSessionCookie,
   createSession,
@@ -39,9 +39,7 @@ export const startSession = async (req, res) => {
   const sessionId = getSessionId(req);
   await deleteSession(sessionId);
 
-  const user = await User.findOne({ firebaseUid: identity.uid })
-    .select("firstName lastName dateOfBirth")
-    .lean();
+  const user = getUserByUid(identity.uid);
   const session = {
     uid: identity.uid,
     email: identity.email || "",
