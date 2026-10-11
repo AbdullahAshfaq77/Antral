@@ -12,13 +12,11 @@
     "desktop": "node desktop/check-ports.cjs && concurrently -k -n gateway,auth,project,agent,web,desktop -c cyan,green,yellow,magenta,blue,white \"node desktop/start-local-gateway.cjs\" \"npm --prefix backend/services/auth run dev\" \"npm --prefix backend/services/project run dev\" \"node desktop/start-local-agent.cjs\" \"npm --prefix frontend run dev -- --host 127.0.0.1\" \"electron desktop/main.cjs\"",
     "build:frontend": "npm --prefix frontend run build",
     "prod": "cross-env ANTRAL_PROD=1 electron desktop/main.cjs",
-    "rebuild:electron": "electron-rebuild -m ./backend -o better-sqlite3 -f",
-    "rebuild:node": "npm --prefix backend rebuild better-sqlite3",
-    "dist": "npm run build:frontend && npm run rebuild:electron && electron-builder",
-    "dist:publish": "npm run build:frontend && npm run rebuild:electron && electron-builder --publish always"
+    "restore:sqlite": "npm --prefix backend install better-sqlite3@13.0.3 --force",
+    "dist": "npm run build:frontend && electron-builder",
+    "dist:publish": "npm run build:frontend && electron-builder --publish always"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7.1",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
     "electron": "^44.5.1",

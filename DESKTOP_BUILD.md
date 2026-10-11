@@ -67,28 +67,27 @@ writes, no server, no shipped secret) with rules allowing admin-only reads.
   - Keep Firebase login, or switch to a simple local account (less friction,
     works offline). Needed because data is keyed by user id.
 - [~] **Phase 5 — Installer + auto-update**
-  - [x] `@electron/rebuild` + scripts: `rebuild:electron` rebuilds
-        better-sqlite3 (in `backend/`) for Electron's ABI; `dist` =
-        build frontend → rebuild → electron-builder; `dist:publish` uploads to
-        GitHub Releases. `npmRebuild: false` so builder doesn't interfere.
+  - [x] No native rebuild needed: better-sqlite3 v13 is N-API, so its prebuilt
+        binary works under BOTH Node (dev) and Electron (packaged). `dist` =
+        build frontend → electron-builder. `npmRebuild: false` so builder leaves
+        the prebuilt alone. (No @electron/rebuild, no Visual Studio required.)
   - [x] electron-updater wired in `main.cjs` (packaged only, guarded);
         `publish: github (realsameek-collab/Antral)` feed in electron-builder.yml.
   - [ ] Run `npm run dist` on Windows to produce `dist-desktop/Antral-Setup-*.exe`
-        and test the packaged app (first real build — expect a round of fixes).
+        and test the packaged app.
   - [ ] App icon (`desktop/build/icon.ico`), optional code signing (else
         Windows SmartScreen shows an "unknown publisher" warning).
 
 ## Building the installer (Windows)
 ```
-npm install                 # gets @electron/rebuild, electron-updater, etc.
-npm run dist                # builds the frontend, rebuilds SQLite for Electron,
-                            # packages -> dist-desktop/Antral-Setup-<version>.exe
+npm install                 # root deps (electron, electron-builder, electron-updater)
+npm run dist                # builds the frontend + packages
+                            # -> dist-desktop/Antral-Setup-<version>.exe
 ```
-Native-ABI note: `npm run dist` rebuilds better-sqlite3 for Electron. To run
-`npm run dev` again afterwards, restore the Node ABI: `npm run rebuild:node`.
-If `rebuild:electron` tries to COMPILE (no prebuilt for this Electron version),
-install Visual Studio Build Tools (C++) + Python, or pin Electron to a version
-better-sqlite3 ships prebuilds for.
+No compiler needed — the N-API SQLite binary is just copied in. If
+backend/node_modules/better-sqlite3 ever gets broken (e.g. a stray
+`npm rebuild`), restore the prebuilt with `npm run restore:sqlite` (never use
+`npm rebuild better-sqlite3`, which forces a source compile).
 
 ## Publishing an update (later)
 ```
