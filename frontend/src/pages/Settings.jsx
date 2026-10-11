@@ -4,8 +4,10 @@ import PermissionsSettings from '../components/settings/PermissionsSettings.jsx'
 import TargetsSettings from '../components/settings/TargetsSettings.jsx'
 import PoliciesSettings from '../components/settings/PoliciesSettings.jsx'
 import AccountSettings from '../components/settings/AccountSettings.jsx'
+import AiProviderSettings from '../components/settings/AiProviderSettings.jsx'
 
 const TABS = [
+  { id: 'ai', label: 'AI provider', icon: 'bolt' },
   { id: 'permissions', label: 'Permissions', icon: 'key' },
   { id: 'targets', label: 'Targets', icon: 'target' },
   { id: 'privacy', label: 'Privacy & policies', icon: 'shield' },
@@ -53,6 +55,7 @@ function Settings({ tab, onNavigate, initials, userName }) {
       </nav>
 
       <div className="min-w-0 flex-1 pb-10">
+        {current === 'ai' && <AiProviderSettings />}
         {current === 'permissions' && <PermissionsSettings onNavigate={onNavigate} />}
         {current === 'targets' && <TargetsSettings onNavigate={onNavigate} />}
         {current === 'privacy' && <PoliciesSettings />}

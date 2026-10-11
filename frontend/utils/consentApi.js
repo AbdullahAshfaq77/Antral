@@ -28,6 +28,11 @@ export const getPolicies = () => request("/agent/consent/policies");
 
 export const getConsentStatus = () => request("/agent/consent/status");
 
+// AI provider setup (the user's own API key, stored locally on their machine).
+export const getLlmSettings = () => request("/agent/settings/llm");
+
+export const setLlmSettings = (body) => request("/agent/settings/llm", { method: "PUT", body });
+
 export const acceptAccountPolicies = (versions) =>
   request("/agent/consent/account", { method: "POST", body: { versions } });
 

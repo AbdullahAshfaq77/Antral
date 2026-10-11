@@ -20,6 +20,8 @@ import {
   getLimits,
   deleteProjectHandler,
   getDeviceStatus,
+  getLlmSettings,
+  updateLlmSettings,
 } from "../controllers/agent.controller.js";
 
 const router = Router();
@@ -29,6 +31,11 @@ router.use(attachUser);
 router.get("/tools", getTools);
 router.get("/limits", getLimits);
 router.get("/devices", getDeviceStatus);
+
+// AI provider setup (the user's own API key). No target/consent gate — the user
+// configures this before authorizing any target.
+router.get("/settings/llm", getLlmSettings);
+router.put("/settings/llm", updateLlmSettings);
 
 // Conversation memory (Redis). POST /runs with a conversationId continues one.
 router.get("/conversations", listConversationsHandler);

@@ -53,9 +53,16 @@ No hosting, no cost to us, no shared keys.
 Identity + activity only, admin-only. Firebase Auth already lists every user
 (name/email/login). Add lightweight activity telemetry to Firestore (client
 writes, no server, no shipped secret) with rules allowing admin-only reads.
-- [ ] **Phase 3 — First-run key setup UI**
-  - Screen to choose provider + paste the user's own key; stored in the OS
-    keychain (or encrypted locally) and passed to the agent service.
+- [x] **Phase 3 — First-run key setup UI**
+  - Backend: `agent/data/settings.js` stores the user's provider + key in the
+    local SQLite kv; `llm.js` gains `applyProviderConfig`/`PROVIDER_META`;
+    agent applies the stored config at startup; `GET/PUT /agent/settings/llm`
+    (auth-gated, no consent gate).
+  - Frontend: Settings → "AI provider" tab (`AiProviderSettings.jsx`) to pick a
+    provider + paste a key (Groq/Gemini free); Dashboard "Get started" now has a
+    "Connect your AI key" step and chat is gated on it.
+  - Note: key is stored locally in the app's SQLite file (user's own machine,
+    their own key). Could later move to OS keychain / Electron safeStorage.
 - [ ] **Phase 4 — Auth decision**
   - Keep Firebase login, or switch to a simple local account (less friction,
     works offline). Needed because data is keyed by user id.

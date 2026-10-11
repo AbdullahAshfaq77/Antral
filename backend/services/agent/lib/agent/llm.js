@@ -42,6 +42,28 @@ const PROVIDERS = {
 // Provider name → time (ms) before which it is skipped after a failure.
 const coolingUntil = new Map();
 
+// Metadata the UI needs to render the "enter your API key" screen.
+export const PROVIDER_META = Object.entries(PROVIDERS).map(([id, p]) => ({
+  id,
+  needsAccountId: Boolean(p.accountIdEnv),
+  defaultModel: p.defaultModel,
+}));
+
+// Desktop app: the user supplies their own key. The stored config is applied
+// onto process.env so the existing provider logic (which reads env) picks it up.
+export const applyProviderConfig = ({ provider, apiKey, accountId, model, visionModel } = {}) => {
+  if (!provider || !PROVIDERS[provider]) return false;
+  const p = PROVIDERS[provider];
+  process.env.LLM_PROVIDER = provider;
+  if (apiKey) process.env[p.keyEnv] = apiKey;
+  if (accountId && p.accountIdEnv) process.env[p.accountIdEnv] = accountId;
+  if (model) process.env.LLM_MODEL = model;
+  else delete process.env.LLM_MODEL;
+  if (visionModel) process.env.LLM_VISION_MODEL = visionModel;
+  else delete process.env.LLM_VISION_MODEL;
+  return true;
+};
+
 const isConfigured = (name) => {
   const provider = PROVIDERS[name];
   return [provider.keyEnv, provider.accountIdEnv].filter(Boolean).every((key) => process.env[key]?.trim());

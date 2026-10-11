@@ -19,7 +19,8 @@ import {
   deleteConversationsForTarget,
 } from "../lib/agent/memory.js";
 import { limitsFor } from "../lib/agent/limits.js";
-import { resolveProvider } from "../lib/agent/llm.js";
+import { resolveProvider, applyProviderConfig, PROVIDER_META } from "../lib/agent/llm.js";
+import { getLlmConfig, setLlmConfig } from "../data/settings.js";
 import { validateAttachments } from "../lib/agent/imageAttachments.js";
 
 const MAX_TASK_CHARS = 4000;
@@ -227,6 +228,45 @@ export const deleteProjectHandler = async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
+};
+
+// GET /settings/llm — the current AI provider setup (never returns the key).
+export const getLlmSettings = (_req, res) => {
+  const cfg = getLlmConfig();
+  res.json({
+    configured: Boolean(cfg.provider && cfg.apiKey),
+    provider: cfg.provider,
+    model: cfg.model,
+    accountId: cfg.accountId,
+    hasKey: Boolean(cfg.apiKey),
+    providers: PROVIDER_META,
+  });
+};
+
+// PUT /settings/llm — save the user's own AI provider + key (stored locally).
+export const updateLlmSettings = (req, res) => {
+  const { provider, apiKey, accountId, model, visionModel } = req.body || {};
+  const meta = PROVIDER_META.find((p) => p.id === provider);
+  if (!meta) return res.status(400).json({ message: "Choose a supported AI provider." });
+
+  const existing = getLlmConfig();
+  const keepingKey = existing.provider === provider && existing.apiKey;
+  if (!apiKey && !keepingKey) {
+    return res.status(400).json({ message: "Enter your API key." });
+  }
+  if (meta.needsAccountId && !accountId && !(keepingKey && existing.accountId)) {
+    return res.status(400).json({ message: "This provider needs an Account ID." });
+  }
+
+  setLlmConfig({ provider, apiKey, accountId, model, visionModel });
+  applyProviderConfig(getLlmConfig());
+  const cfg = getLlmConfig();
+  return res.json({
+    message: "AI provider saved. It applies to your next message.",
+    configured: Boolean(cfg.provider && cfg.apiKey),
+    provider: cfg.provider,
+    model: cfg.model,
+  });
 };
 
 // GET /limits — each agent's context window and work limits.

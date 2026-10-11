@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import Icon from '../components/ui/Icon.jsx'
 import { Button, Card, EmptyState, Spinner, StatusPill } from '../components/ui/primitives.jsx'
 import { listRuns } from '../../utils/agentApi.js'
+import { getLlmSettings } from '../../utils/consentApi.js'
 import { loadConsent } from '../store/consentSlice.js'
 import { daysUntil, greeting, relativeTime, TARGET_TYPE_META, targetName } from '../lib/format.js'
 import { riskDot, SCOPE_ICON } from '../components/settings/scopeMeta.js'
@@ -58,7 +59,18 @@ function Dashboard({ firstName, liveRun, onNavigate, onStartChat, onOpenConversa
   const { policies, account, authorizations, status: consentStatus } = useSelector((state) => state.consent)
   const [runs, setRuns] = useState(null)
   const [runsError, setRunsError] = useState(false)
+  const [aiReady, setAiReady] = useState(null)
   const liveStatus = liveRun?.status
+
+  useEffect(() => {
+    let cancelled = false
+    getLlmSettings()
+      .then((s) => !cancelled && setAiReady(Boolean(s.configured)))
+      .catch(() => !cancelled && setAiReady(false))
+    return () => {
+      cancelled = true
+    }
+  }, [liveStatus])
 
   useEffect(() => {
     let cancelled = false
@@ -92,9 +104,9 @@ function Dashboard({ firstName, liveRun, onNavigate, onStartChat, onOpenConversa
   const failed = runs?.filter((r) => r.status === 'failed').length ?? 0
   const waiting = runs?.filter((r) => r.status === 'awaiting_approval').length ?? 0
 
-  const setupDone = accepted && activeTargets.length > 0 && (runs?.length ?? 0) > 0
-  const setupProgress = [accepted, activeTargets.length > 0, (runs?.length ?? 0) > 0].filter(Boolean).length
-  const canChat = accepted && activeTargets.length > 0
+  const setupDone = aiReady && accepted && activeTargets.length > 0 && (runs?.length ?? 0) > 0
+  const setupProgress = [aiReady, accepted, activeTargets.length > 0, (runs?.length ?? 0) > 0].filter(Boolean).length
+  const canChat = Boolean(aiReady) && accepted && activeTargets.length > 0
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
 
   return (
@@ -153,18 +165,26 @@ function Dashboard({ firstName, liveRun, onNavigate, onStartChat, onOpenConversa
           <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] px-5 py-4">
             <div>
               <h2 className="text-sm font-semibold text-white">Get started</h2>
-              <p className="mt-0.5 text-xs text-neutral-500">Three quick steps before the agents can help.</p>
+              <p className="mt-0.5 text-xs text-neutral-500">A few quick steps before the agents can help.</p>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs tabular-nums text-neutral-400">{setupProgress}/3</span>
+              <span className="text-xs tabular-nums text-neutral-400">{setupProgress}/4</span>
               <span className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
-                <span className="block h-full rounded-full bg-indigo-400 transition-[width] duration-500" style={{ width: `${(setupProgress / 3) * 100}%` }} />
+                <span className="block h-full rounded-full bg-indigo-400 transition-[width] duration-500" style={{ width: `${(setupProgress / 4) * 100}%` }} />
               </span>
             </div>
           </div>
           <ol className="divide-y divide-white/[0.05] px-5">
             <SetupStep
               index={1}
+              done={Boolean(aiReady)}
+              title="Connect your AI key"
+              action={<Button size="sm" variant="primary" onClick={() => onNavigate('settings', 'ai')}>Add key</Button>}
+            >
+              Antral runs on your own AI account. Paste your API key (Groq and Gemini have free tiers) — it stays on this device.
+            </SetupStep>
+            <SetupStep
+              index={2}
               done={accepted}
               title="Accept the policies"
               action={<Button size="sm" variant="primary" onClick={() => onNavigate('settings', 'privacy')}>Review</Button>}
@@ -172,7 +192,7 @@ function Dashboard({ firstName, liveRun, onNavigate, onStartChat, onOpenConversa
               The agents only work on systems you own or may assess. Read and accept the terms in Settings.
             </SetupStep>
             <SetupStep
-              index={2}
+              index={3}
               done={activeTargets.length > 0}
               title="Authorize a target"
               action={
@@ -184,7 +204,7 @@ function Dashboard({ firstName, liveRun, onNavigate, onStartChat, onOpenConversa
               Choose a folder, GitHub repository or host and what the agents may do there.
             </SetupStep>
             <SetupStep
-              index={3}
+              index={4}
               done={(runs?.length ?? 0) > 0}
               title="Start your first chat"
               action={
