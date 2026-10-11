@@ -42,6 +42,9 @@ const createWindow = async () => {
   const origin = new URL(url).origin
 
   if (isProd()) {
+    // Store the local SQLite database in the per-user app data folder so it
+    // persists across updates and is isolated per OS account.
+    process.env.ANTRAL_DATA_DIR = app.getPath('userData')
     // Launch the bundled backend; startServices waits for the gateway itself.
     await startServices(app.isPackaged)
   } else {

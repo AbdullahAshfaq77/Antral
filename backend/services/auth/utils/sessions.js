@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { redis } from "../config/redis.js";
+import { kvGet, kvSet, kvDel } from "../../../shared/localdb.js";
 
 export const SESSION_COOKIE = "antral_session";
 export const SESSION_TTL_SECONDS = 24 * 60 * 60;
@@ -18,26 +18,22 @@ export const getSessionId = (req) => {
 
 export const createSession = async (session) => {
   const sessionId = randomBytes(32).toString("hex");
-  await redis.set(sessionKey(sessionId), JSON.stringify(session), {
-    EX: SESSION_TTL_SECONDS,
-  });
+  kvSet(sessionKey(sessionId), JSON.stringify(session), SESSION_TTL_SECONDS);
   return sessionId;
 };
 
 export const readSession = async (sessionId) => {
   if (!sessionId) return null;
-  const value = await redis.get(sessionKey(sessionId));
+  const value = kvGet(sessionKey(sessionId));
   return value ? JSON.parse(value) : null;
 };
 
 export const updateSession = async (sessionId, session) => {
-  await redis.set(sessionKey(sessionId), JSON.stringify(session), {
-    EX: SESSION_TTL_SECONDS,
-  });
+  kvSet(sessionKey(sessionId), JSON.stringify(session), SESSION_TTL_SECONDS);
 };
 
 export const deleteSession = async (sessionId) => {
-  if (sessionId) await redis.del(sessionKey(sessionId));
+  if (sessionId) kvDel(sessionKey(sessionId));
 };
 
 export const setSessionCookie = (res, sessionId) => {

@@ -2,7 +2,6 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import connectDb from "./config/db.js";
-import { redis } from "./config/redis.js";
 import consentRoutes from "./routes/consent.routes.js";
 import agentRoutes from "./routes/agent.routes.js";
 import { markInterruptedRuns } from "./lib/agent/orchestrator.js";
@@ -44,7 +43,8 @@ app.use((err, _req, res, _next) => {
 });
 
 const start = async () => {
-  await redis.connect();
+  // Sessions and conversation memory now live in the shared local SQLite
+  // database (opened on first use), so no Redis connection is needed.
   await connectDb();
   await markInterruptedRuns().catch((e) => console.error("Could not mark interrupted runs:", e.message));
   const listening = () => {

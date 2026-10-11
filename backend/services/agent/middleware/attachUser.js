@@ -1,6 +1,6 @@
-import { redis } from "../config/redis.js";
+import { kvGet } from "../../../shared/localdb.js";
 
-// Must match the auth service's session cookie name and Redis key layout.
+// Must match the auth service's session cookie name and key layout.
 const SESSION_COOKIE = "antral_session";
 const sessionKey = (sessionId) => `session:${sessionId}`;
 
@@ -23,7 +23,7 @@ export const attachUser = async (req, res, next) => {
       return res.status(401).json({ message: "Please sign in to continue." });
     }
 
-    const raw = await redis.get(sessionKey(sessionId));
+    const raw = kvGet(sessionKey(sessionId));
     if (!raw) {
       return res.status(401).json({ message: "Your session has expired. Please sign in again." });
     }

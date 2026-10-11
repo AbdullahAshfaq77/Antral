@@ -20,10 +20,17 @@ No hosting, no cost to us, no shared keys.
     Dev mode (Vite) unchanged.
   - `electron-builder.yml` + `npm run dist` build a Windows installer. Secrets
     (.env, serviceAccountKey.json) are excluded from the package.
-- [ ] **Phase 2 — Local storage (the real blocker)**
-  - Replace MongoDB + Redis so there is nothing external to install.
-  - Approach TBD: bundle a local MongoDB + a small local session/memory store, OR
-    a Redis-compatible shim (only ~8 commands are used, all via `config/redis.js`).
+- [~] **Phase 2 — Local storage (the real blocker)** — one shared SQLite file
+    (`backend/shared/localdb.js`, `better-sqlite3`, WAL for multi-process) replaces
+    both Redis and MongoDB. Data dir = `ANTRAL_DATA_DIR` (Electron userData) or
+    `backend/.data` in dev.
+  - [x] **Step A — Redis → SQLite** (sessions + conversation memory). Done &
+        unit-tested: `kv` table for sessions (auth `sessions.js`, agent
+        `attachUser.js`); `conversations`/`messages` tables (agent `memory.js`
+        fully rewritten). Redis removed from both services' startup. App still
+        uses MongoDB for the 5 models — testable now (login + chat + history).
+  - [ ] **Step B — MongoDB → SQLite** (user, emailCode, project, agentRun,
+        consent models). After this the app is fully local.
 - [ ] **Phase 3 — First-run key setup UI**
   - Screen to choose provider + paste the user's own key; stored in the OS
     keychain (or encrypted locally) and passed to the agent service.
