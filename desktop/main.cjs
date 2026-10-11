@@ -93,9 +93,22 @@ const createWindow = async () => {
   await mainWindow.loadURL(url)
 }
 
+// Auto-update: in the packaged app, check GitHub Releases and download/notify.
+// No-ops / logs harmlessly if there is no update feed or network.
+const checkForUpdates = () => {
+  if (!app.isPackaged) return
+  try {
+    const { autoUpdater } = require('electron-updater')
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {})
+  } catch {
+    // electron-updater missing or no feed configured; ignore
+  }
+}
+
 app.whenReady().then(async () => {
   try {
     await createWindow()
+    checkForUpdates()
   } catch (error) {
     dialog.showErrorBox('Unable to launch Antral', error.message)
     app.quit()

@@ -66,10 +66,37 @@ writes, no server, no shipped secret) with rules allowing admin-only reads.
 - [ ] **Phase 4 — Auth decision**
   - Keep Firebase login, or switch to a simple local account (less friction,
     works offline). Needed because data is keyed by user id.
-- [ ] **Phase 5 — Release pipeline**
-  - electron-builder publish to GitHub Releases + electron-updater auto-update.
-  - App icon (`desktop/build/icon.ico`), optional code signing (else SmartScreen
-    shows an "unknown publisher" warning).
+- [~] **Phase 5 — Installer + auto-update**
+  - [x] `@electron/rebuild` + scripts: `rebuild:electron` rebuilds
+        better-sqlite3 (in `backend/`) for Electron's ABI; `dist` =
+        build frontend → rebuild → electron-builder; `dist:publish` uploads to
+        GitHub Releases. `npmRebuild: false` so builder doesn't interfere.
+  - [x] electron-updater wired in `main.cjs` (packaged only, guarded);
+        `publish: github (realsameek-collab/Antral)` feed in electron-builder.yml.
+  - [ ] Run `npm run dist` on Windows to produce `dist-desktop/Antral-Setup-*.exe`
+        and test the packaged app (first real build — expect a round of fixes).
+  - [ ] App icon (`desktop/build/icon.ico`), optional code signing (else
+        Windows SmartScreen shows an "unknown publisher" warning).
+
+## Building the installer (Windows)
+```
+npm install                 # gets @electron/rebuild, electron-updater, etc.
+npm run dist                # builds the frontend, rebuilds SQLite for Electron,
+                            # packages -> dist-desktop/Antral-Setup-<version>.exe
+```
+Native-ABI note: `npm run dist` rebuilds better-sqlite3 for Electron. To run
+`npm run dev` again afterwards, restore the Node ABI: `npm run rebuild:node`.
+If `rebuild:electron` tries to COMPILE (no prebuilt for this Electron version),
+install Visual Studio Build Tools (C++) + Python, or pin Electron to a version
+better-sqlite3 ships prebuilds for.
+
+## Publishing an update (later)
+```
+set GH_TOKEN=<a GitHub token with repo scope>
+# bump "version" in package.json, then:
+npm run dist:publish        # uploads the installer + update metadata to Releases
+```
+Installed apps then auto-update on next launch (electron-updater).
 
 ## Test the production path locally (before a full build)
 Needs the backend `.env` files + reachable DB/Redis present (that changes in
