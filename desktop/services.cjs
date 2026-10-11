@@ -10,7 +10,10 @@ const { spawn } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
 
-const PORTS = { gateway: 7000, auth: 7001, project: 7002, agent: 7003 }
+// The standalone project service is intentionally omitted: it is unused in the
+// app (the gateway doesn't proxy to it and the agent manages projects itself),
+// so the desktop app doesn't ship or run it.
+const PORTS = { gateway: 7000, auth: 7001, agent: 7003 }
 
 // Where the backend + built frontend live: in a packaged app they are copied in
 // as extraResources (resources/backend, resources/frontend); in development
@@ -69,7 +72,6 @@ const startServices = async (isPackaged) => {
   // Order doesn't strictly matter (they retry their own connections), but start
   // the backing services before the gateway that proxies to them.
   startOne(base, 'auth')
-  startOne(base, 'project')
   startOne(base, 'agent')
   startOne(base, 'gateway', { SERVE_FRONTEND: '1' })
   await waitForGateway()

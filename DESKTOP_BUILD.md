@@ -33,9 +33,12 @@ No hosting, no cost to us, no shared keys.
     - [x] **B1 — auth** (user + emailCode → `data/users.js`, `data/emailCodes.js`;
           `users`/`email_codes` tables). Auth now needs NO MongoDB and NO Redis.
           Tested incl. expiry, max-attempts, one-time consume.
-    - [ ] **B2 — project** (project model).
+    - [x] **B2 — project**: the standalone project service is unused (gateway
+          doesn't proxy it; the agent manages projects itself), so the desktop
+          app simply doesn't run it. No conversion needed.
     - [ ] **B3 — agent** (agentRun + consent models — consent is the most complex:
-          TTL + isCurrentlyValid + multiple sub-models).
+          TTL + isCurrentlyValid + multiple sub-models). This is the last data piece;
+          after it the app needs NO MongoDB at all.
 
 ## Central user tracking (separate, after storage)
 Identity + activity only, admin-only. Firebase Auth already lists every user
