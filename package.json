@@ -4,13 +4,19 @@
   "private": true,
   "description": "Antral — agentic security team. Root launcher for all services.",
   "type": "module",
+  "main": "desktop/main.cjs",
   "scripts": {
     "dev": "node desktop/check-ports.cjs && concurrently -k -n gateway,auth,project,agent,web -c cyan,green,yellow,magenta,blue \"npm --prefix backend/gateway run dev\" \"npm --prefix backend/services/auth run dev\" \"npm --prefix backend/services/project run dev\" \"npm --prefix backend/services/agent run dev\" \"npm --prefix frontend run dev\"",
     "dev:backend": "concurrently -k -n gateway,auth,project,agent -c cyan,green,yellow,magenta \"npm --prefix backend/gateway run dev\" \"npm --prefix backend/services/auth run dev\" \"npm --prefix backend/services/project run dev\" \"npm --prefix backend/services/agent run dev\"",
-    "desktop": "node desktop/check-ports.cjs && concurrently -k -n gateway,auth,project,agent,web,desktop -c cyan,green,yellow,magenta,blue,white \"node desktop/start-local-gateway.cjs\" \"npm --prefix backend/services/auth run dev\" \"npm --prefix backend/services/project run dev\" \"node desktop/start-local-agent.cjs\" \"npm --prefix frontend run dev -- --host 127.0.0.1\" \"electron desktop/main.cjs\""
+    "desktop": "node desktop/check-ports.cjs && concurrently -k -n gateway,auth,project,agent,web,desktop -c cyan,green,yellow,magenta,blue,white \"node desktop/start-local-gateway.cjs\" \"npm --prefix backend/services/auth run dev\" \"npm --prefix backend/services/project run dev\" \"node desktop/start-local-agent.cjs\" \"npm --prefix frontend run dev -- --host 127.0.0.1\" \"electron desktop/main.cjs\"",
+    "build:frontend": "npm --prefix frontend run build",
+    "prod": "cross-env ANTRAL_PROD=1 electron desktop/main.cjs",
+    "dist": "npm run build:frontend && electron-builder"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
-    "electron": "^44.5.1"
+    "cross-env": "^7.0.3",
+    "electron": "^44.5.1",
+    "electron-builder": "^25.1.8"
   }
 }

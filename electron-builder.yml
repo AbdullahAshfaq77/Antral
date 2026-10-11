@@ -1,0 +1,40 @@
+appId: com.antral.app
+productName: Antral
+copyright: Antral
+
+directories:
+  output: dist-desktop
+  buildResources: desktop/build
+
+# Files packed into the app (the Electron main process + its helpers).
+files:
+  - desktop/**/*
+  - package.json
+
+# The backend services and the built frontend ride along as resources. They are
+# launched by Electron's bundled Node at runtime (see desktop/services.cjs).
+# Secrets are explicitly excluded so they are NEVER shipped to users — each
+# install supplies its own config (own API key, local data).
+extraResources:
+  - from: backend
+    to: backend
+    filter:
+      - "**/*"
+      - "!**/.env"
+      - "!**/.env.*"
+      - "!**/serviceAccountKey.json"
+      - "!**/*.log"
+      - "!**/test/**"
+  - from: frontend/dist
+    to: frontend/dist
+
+win:
+  target:
+    - nsis
+  # icon: desktop/build/icon.ico   # add a 256x256 .ico here before release
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-Setup-${version}.${ext}

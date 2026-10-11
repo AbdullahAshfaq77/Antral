@@ -1,7 +1,13 @@
 const { app, BrowserWindow, dialog } = require('electron')
+const { startServices, stopServices, PORTS } = require('./services.cjs')
 
-const devServerUrl = 'http://localhost:5173'
-const devServerOrigin = new URL(devServerUrl).origin
+// Production = the packaged app (or ANTRAL_PROD=1 to test the prod path locally).
+// In production Electron starts the bundled services and loads the app from the
+// gateway, which serves the built frontend. In development it loads the Vite
+// dev server, and the services are started separately by `npm run desktop`.
+const isProd = () => app.isPackaged || process.env.ANTRAL_PROD === '1'
+const appUrl = () => (isProd() ? `http://127.0.0.1:${PORTS.gateway}` : 'http://localhost:5173')
+
 let mainWindow
 
 const isFirebaseAuthPopup = (url) => {
@@ -18,22 +24,30 @@ const isFirebaseAuthPopup = (url) => {
   }
 }
 
-const waitForDevServer = async () => {
+const waitForUrl = async (url) => {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     try {
-      const response = await fetch(devServerUrl, { signal: AbortSignal.timeout(1000) })
+      const response = await fetch(url, { signal: AbortSignal.timeout(1000) })
       if (response.ok) return
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      continue
+      // not up yet
     }
     await new Promise((resolve) => setTimeout(resolve, 500))
   }
-  throw new Error(`The Antral UI did not start at ${devServerUrl}.`)
+  throw new Error(`The Antral UI did not start at ${url}.`)
 }
 
 const createWindow = async () => {
-  await waitForDevServer()
+  const url = appUrl()
+  const origin = new URL(url).origin
+
+  if (isProd()) {
+    // Launch the bundled backend; startServices waits for the gateway itself.
+    await startServices(app.isPackaged)
+  } else {
+    await waitForUrl(url)
+  }
+
   mainWindow = new BrowserWindow({
     width: 1360,
     height: 900,
@@ -49,8 +63,8 @@ const createWindow = async () => {
     },
   })
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (!isFirebaseAuthPopup(url)) return { action: 'deny' }
+  mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
+    if (!isFirebaseAuthPopup(target)) return { action: 'deny' }
     return {
       action: 'allow',
       overrideBrowserWindowOptions: {
@@ -63,17 +77,17 @@ const createWindow = async () => {
       },
     }
   })
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (new URL(url).origin !== devServerOrigin) event.preventDefault()
+  mainWindow.webContents.on('will-navigate', (event, target) => {
+    if (new URL(target).origin !== origin) event.preventDefault()
   })
   mainWindow.webContents.on('did-create-window', (popup) => {
     popup.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-    popup.webContents.on('will-navigate', (event, url) => {
-      if (new URL(url).protocol !== 'https:') event.preventDefault()
+    popup.webContents.on('will-navigate', (event, target) => {
+      if (new URL(target).protocol !== 'https:') event.preventDefault()
     })
   })
   mainWindow.once('ready-to-show', () => mainWindow.show())
-  await mainWindow.loadURL(devServerUrl)
+  await mainWindow.loadURL(url)
 }
 
 app.whenReady().then(async () => {
@@ -94,6 +108,8 @@ app.on('activate', () => {
   }
 })
 
+// Stop the bundled services when the app closes.
+app.on('before-quit', () => stopServices())
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
