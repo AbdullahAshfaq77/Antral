@@ -1,4 +1,13 @@
-import { AccountConsent, TargetAuthorization } from "../models/consent.model.js";
+import {
+  findConsent,
+  listAuthByUser,
+  upsertAccountConsent,
+  withdrawConsent,
+  setDisabledCapabilities as setDisabledCaps,
+  upsertAuthorization,
+  updateAuthScopes,
+  revokeAuth,
+} from "../data/consent.js";
 import {
   publicAccountDocuments,
   publicTargetAuthorization,
@@ -40,12 +49,8 @@ export const getPolicies = (_req, res) => {
 
 // GET /consent/status — the current user's account consent + authorizations.
 export const getConsentStatus = async (req, res) => {
-  const [consent, authorizations] = await Promise.all([
-    AccountConsent.findOne({ userUid: req.user.uid }),
-    TargetAuthorization.find({ userUid: req.user.uid, status: { $ne: "revoked" } }).sort({
-      createdAt: -1,
-    }),
-  ]);
+  const consent = findConsent(req.user.uid);
+  const authorizations = listAuthByUser(req.user.uid, { excludeRevoked: true });
 
   const missing = missingAccountDocuments(consent);
   return res.json({
@@ -88,29 +93,21 @@ export const acceptAccountPolicies = async (req, res) => {
   }));
   const audit = requestAudit(req);
 
-  await AccountConsent.findOneAndUpdate(
-    { userUid: req.user.uid },
-    {
-      $set: {
-        userEmail: req.user.email,
-        accepted,
-        status: "active",
-        withdrawnAt: null,
-        ...audit,
-      },
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
-  );
+  upsertAccountConsent(req.user.uid, {
+    userEmail: req.user.email,
+    accepted,
+    status: "active",
+    withdrawnAt: null,
+    ip: audit.ip,
+    userAgent: audit.userAgent,
+  });
 
   return res.status(200).json({ message: "Thanks — your acceptance has been recorded." });
 };
 
 // DELETE /consent/account — withdraw account-level consent (stops processing).
 export const withdrawAccountConsent = async (req, res) => {
-  await AccountConsent.findOneAndUpdate(
-    { userUid: req.user.uid },
-    { $set: { status: "withdrawn", withdrawnAt: new Date() } },
-  );
+  withdrawConsent(req.user.uid);
   return res.status(200).json({ message: "Your consent has been withdrawn." });
 };
 
@@ -154,27 +151,15 @@ export const authorizeTarget = async (req, res) => {
   const audit = requestAudit(req);
 
   // Re-authorizing an existing target replaces its active record.
-  const doc = await TargetAuthorization.findOneAndUpdate(
-    {
-      userUid: req.user.uid,
-      "target.type": target.type,
-      "target.identifier": target.identifier,
-    },
-    {
-      $set: {
-        userUid: req.user.uid,
-        target,
-        attestation: { ownershipConfirmed: true, basis: attestation.basis },
-        scopes: [...new Set(scopes)],
-        authorizationVersion,
-        status: "active",
-        expiresAt,
-        revokedAt: null,
-        ...audit,
-      },
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true },
-  );
+  const doc = upsertAuthorization(req.user.uid, {
+    target,
+    attestation: { ownershipConfirmed: true, basis: attestation.basis },
+    scopes: [...new Set(scopes)],
+    authorizationVersion,
+    expiresAt,
+    ip: audit.ip,
+    userAgent: audit.userAgent,
+  });
 
   return res.status(201).json({
     message: "Target authorized.",
@@ -196,11 +181,7 @@ export const updateTargetScopes = async (req, res) => {
     return res.status(400).json({ message: "One or more permissions are not recognized." });
   }
 
-  const doc = await TargetAuthorization.findOneAndUpdate(
-    { _id: id, userUid: req.user.uid, status: "active" },
-    { $set: { scopes: [...new Set(scopes)] } },
-    { new: true, runValidators: true },
-  ).catch(() => null);
+  const doc = updateAuthScopes(id, req.user.uid, scopes);
 
   if (!doc) {
     return res.status(404).json({ message: "Authorization not found." });
@@ -214,11 +195,7 @@ export const updateTargetScopes = async (req, res) => {
 // DELETE /consent/target/:id — revoke a target authorization.
 export const revokeTargetAuthorization = async (req, res) => {
   const { id } = req.params;
-  const doc = await TargetAuthorization.findOneAndUpdate(
-    { _id: id, userUid: req.user.uid, status: { $ne: "revoked" } },
-    { $set: { status: "revoked", revokedAt: new Date() } },
-    { new: true },
-  ).catch(() => null);
+  const doc = revokeAuth(id, req.user.uid);
 
   if (!doc) {
     return res.status(404).json({ message: "Authorization not found." });
@@ -238,11 +215,7 @@ export const setDisabledCapabilities = async (req, res) => {
     return res.status(400).json({ message: "One or more capabilities are not recognized." });
   }
 
-  const doc = await AccountConsent.findOneAndUpdate(
-    { userUid: req.user.uid },
-    { $set: { disabledCapabilities: [...new Set(disabled)] } },
-    { new: true, runValidators: true },
-  );
+  const doc = setDisabledCaps(req.user.uid, disabled);
 
   if (!doc) {
     return res.status(409).json({

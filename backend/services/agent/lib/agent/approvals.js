@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import { AgentRun } from "../../models/agentRun.model.js";
-import { TargetAuthorization } from "../../models/consent.model.js";
+import { updateRun } from "../../data/agentRuns.js";
+import { addAlwaysAllow } from "../../data/consent.js";
 import { logStep } from "./runLog.js";
 import { redactSecrets } from "./redact.js";
 
@@ -24,10 +24,7 @@ export const requestApproval = async ({ run, tool, args, summary, rule, signal }
   const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS);
   const pending = { id, tool, summary, args: redactArgs(args), rule, requestedAt: new Date(), expiresAt };
 
-  await AgentRun.updateOne(
-    { _id: run._id },
-    { $set: { status: "awaiting_approval", pendingApproval: pending } },
-  );
+  updateRun(run._id, { status: "awaiting_approval", pendingApproval: pending });
   await logStep(run._id, { kind: "approval_request", tool, args: pending.args, content: summary });
 
   const decision = await new Promise((resolve) => {
@@ -44,10 +41,10 @@ export const requestApproval = async ({ run, tool, args, summary, rule, signal }
   });
 
   if (decision === "allow_always" && rule) {
-    await TargetAuthorization.updateOne({ _id: run.authorizationId }, { $addToSet: { alwaysAllow: rule } });
+    addAlwaysAllow(run.authorizationId, rule);
   }
   if (decision !== "cancelled") {
-    await AgentRun.updateOne({ _id: run._id }, { $set: { status: "running", pendingApproval: null } });
+    updateRun(run._id, { status: "running", pendingApproval: null });
   }
   await logStep(run._id, {
     kind: "approval",

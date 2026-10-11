@@ -1,5 +1,12 @@
 import { registerTool } from "./registry.js";
-import { AccountConsent, TargetAuthorization } from "../../../models/consent.model.js";
+import {
+  findConsent,
+  findAuthByIdUser,
+  addAuthScope,
+  removeAuthScope,
+  addDisabledCapability,
+  removeDisabledCapability,
+} from "../../../data/consent.js";
 import { SCOPES, SCOPE_IDS } from "../../policies.js";
 
 // Lets the user manage permissions by asking in chat ("turn off PowerShell",
@@ -29,10 +36,8 @@ const whereParam = {
 };
 
 const loadState = async ({ userUid, authorizationId }) => {
-  const [consent, auth] = await Promise.all([
-    AccountConsent.findOne({ userUid }),
-    TargetAuthorization.findOne({ _id: authorizationId, userUid }),
-  ]);
+  const consent = findConsent(userUid);
+  const auth = findAuthByIdUser(authorizationId, userUid);
   if (!consent) throw new Error("The user hasn't accepted the account policies yet.");
   if (!auth) throw new Error("This chat's target authorization no longer exists.");
   return { consent, auth };
@@ -78,10 +83,10 @@ registerTool({
     if (!SCOPE_IDS.includes(scope)) throw new Error(`Unknown permission "${scope}".`);
     const state = await loadState(ctx);
     if (where === "this_target") {
-      await TargetAuthorization.updateOne({ _id: state.auth._id }, { $pull: { scopes: scope } });
+      removeAuthScope(state.auth._id, scope);
       return `Done. "${labelOf(scope)}" is no longer granted for this target. It stays off until the user turns it back on.`;
     }
-    await AccountConsent.updateOne({ _id: state.consent._id }, { $addToSet: { disabledCapabilities: scope } });
+    addDisabledCapability(state.consent.userUid, scope);
     return `Done. "${labelOf(scope)}" is now switched off everywhere, for every target.`;
   },
 });
@@ -113,14 +118,14 @@ registerTool({
     const granted = state.auth.scopes.includes(scope);
 
     if (where === "this_target") {
-      await TargetAuthorization.updateOne({ _id: state.auth._id }, { $addToSet: { scopes: scope } });
+      addAuthScope(state.auth._id, scope);
       const note = disabled.includes(scope)
         ? ` Note: it is still switched off account-wide, so it stays inactive until that switch is turned on too.`
         : "";
       return `Done. "${labelOf(scope)}" is now granted for this target and is usable from the next message.${note}`;
     }
 
-    await AccountConsent.updateOne({ _id: state.consent._id }, { $pull: { disabledCapabilities: scope } });
+    removeDisabledCapability(state.consent.userUid, scope);
     const note = granted
       ? " It is usable on this target from the next message."
       : " It isn't granted for this target yet; turn it on for this target as well to use it here.";

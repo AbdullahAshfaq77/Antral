@@ -1,4 +1,4 @@
-import { AccountConsent, TargetAuthorization } from "../models/consent.model.js";
+import { findConsent, findActiveAuthForTarget } from "../data/consent.js";
 import { CURRENT_ACCOUNT_VERSIONS, LOCAL_COMPUTER_TARGET_ENABLED, effectiveScopes } from "../lib/policies.js";
 import { normalizeTarget } from "../lib/targets.js";
 
@@ -14,7 +14,7 @@ export const missingAccountDocuments = (consent) => {
 // Gate 1: the user must have accepted the current account-level policies.
 export const requireAccountConsent = async (req, res, next) => {
   try {
-    const consent = await AccountConsent.findOne({ userUid: req.user.uid });
+    const consent = findConsent(req.user.uid);
     const missing = missingAccountDocuments(consent);
     if (missing.length > 0) {
       return res.status(403).json({
@@ -54,12 +54,7 @@ export const requireTargetAuthorization = (requiredScopes = []) => async (req, r
       return res.status(403).json({ message: "This PC access is available only in the local desktop app." });
     }
 
-    const auth = await TargetAuthorization.findOne({
-      userUid: req.user.uid,
-      "target.type": target.type,
-      "target.identifier": target.identifier,
-      status: "active",
-    });
+    const auth = findActiveAuthForTarget(req.user.uid, target.type, target.identifier);
 
     if (!auth || !auth.isCurrentlyValid()) {
       return res.status(403).json({
@@ -82,8 +77,7 @@ export const requireTargetAuthorization = (requiredScopes = []) => async (req, r
 
     // Global kill-switch: a capability the user has turned off account-wide is
     // denied everywhere, even if it was granted for this target.
-    const consent =
-      req.accountConsent ?? (await AccountConsent.findOne({ userUid: req.user.uid }));
+    const consent = req.accountConsent ?? findConsent(req.user.uid);
     const disabled = consent?.disabledCapabilities || [];
     const blocked = requiredScopes.filter((s) => disabled.includes(s));
     if (blocked.length > 0) {

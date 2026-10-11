@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
-import { AgentRun } from "../../models/agentRun.model.js";
-import { AccountConsent } from "../../models/consent.model.js";
+import { createRun, updateRun, markInterrupted } from "../../data/agentRuns.js";
+import { findConsent } from "../../data/consent.js";
 import { availableTools } from "./tools/index.js";
 import { LOCAL_COMPUTER_TARGET_ENABLED, effectiveScopes } from "../policies.js";
 import { chat, toToolSchemas, resolveProvider, isTooLarge } from "./llm.js";
@@ -150,7 +150,11 @@ const loop = async (run, { tools, root, signal, limits, history, toolsUsed, atta
     const now = Date.now();
     if (now - lastFlush < 500) return;
     lastFlush = now;
-    AgentRun.updateOne({ _id: run._id }, { $set: { result: redactSecrets(text) } }).catch(() => {});
+    try {
+      updateRun(run._id, { result: redactSecrets(text) });
+    } catch {
+      // best-effort live preview; ignore write errors
+    }
   };
 
   for (let turn = 0; turn < limits.maxTurns; turn += 1) {
@@ -165,10 +169,7 @@ const loop = async (run, { tools, root, signal, limits, history, toolsUsed, atta
       }),
     );
     // Record which provider actually answered (it changes after a silent failover).
-    await AgentRun.updateOne(
-      { _id: run._id },
-      { $set: { provider, model, ...(usage?.prompt_tokens ? { contextTokensUsed: usage.prompt_tokens } : {}) } },
-    );
+    updateRun(run._id, { provider, model, ...(usage?.prompt_tokens ? { contextTokensUsed: usage.prompt_tokens } : {}) });
     const calls = message.tool_calls || [];
 
     messages.push({
@@ -271,7 +272,7 @@ export const startRun = async ({ userUid, authorization, target, task, disabledS
 
   const history = await loadHistory(userUid, conversationId);
 
-  const run = await AgentRun.create({
+  const run = createRun({
     userUid,
     authorizationId: authorization._id,
     conversationId,
@@ -298,7 +299,7 @@ export const startRun = async ({ userUid, authorization, target, task, disabledS
       let continuedBy = null;
       if (handoff.authorization && !controller.signal.aborted) {
         try {
-          const consent = await AccountConsent.findOne({ userUid });
+          const consent = findConsent(userUid);
           const next = await startRun({
             userUid,
             authorization: handoff.authorization,
@@ -334,15 +335,4 @@ export const cancelRun = (runId) => {
 };
 
 // Runs that were executing when the process stopped can't resume.
-export const markInterruptedRuns = () =>
-  AgentRun.updateMany(
-    { status: { $in: ["running", "awaiting_approval"] } },
-    {
-      $set: {
-        status: "interrupted",
-        pendingApproval: null,
-        error: "The agent service restarted during this run.",
-        finishedAt: new Date(),
-      },
-    },
-  );
+export const markInterruptedRuns = async () => markInterrupted();

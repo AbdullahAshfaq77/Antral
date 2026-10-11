@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { registerTool } from "./registry.js";
-import { TargetAuthorization } from "../../../models/consent.model.js";
+import { findAuthByIdUser, findAuthForTarget, upsertAuthorization } from "../../../data/consent.js";
 import { SCOPES, CURRENT_TARGET_AUTH_VERSION, TARGET_AUTH_TTL_DAYS, LOCAL_COMPUTER_TARGET_ENABLED } from "../../policies.js";
 import { normalizeTarget } from "../../targets.js";
 import { moveConversation } from "../memory.js";
@@ -81,7 +81,7 @@ registerTool({
     const target = await resolveTarget(location, cleanName);
     if (!target) throw new Error("That isn't a folder path or GitHub repository URL I can use.");
 
-    const current = await TargetAuthorization.findOne({ _id: ctx.authorizationId, userUid: ctx.userUid });
+    const current = findAuthByIdUser(ctx.authorizationId, ctx.userUid);
     if (!current) throw new Error("This chat's project authorization no longer exists.");
     if (current.target.type === target.type && current.target.identifier === target.identifier) {
       return `"${target.identifier}" is already this chat's project. Nothing to add.`;
@@ -89,32 +89,19 @@ registerTool({
 
     // Same permissions as the project this chat came from. An already-active
     // project keeps its own permissions; a revoked or expired one is renewed.
-    const existing = await TargetAuthorization.findOne({
-      userUid: ctx.userUid,
-      "target.type": target.type,
-      "target.identifier": target.identifier,
-    });
+    const existing = findAuthForTarget(ctx.userUid, target.type, target.identifier);
     const reuse = existing?.isCurrentlyValid();
     const scopes = reuse ? existing.scopes : [...current.scopes];
     const project = reuse
       ? existing
-      : await TargetAuthorization.findOneAndUpdate(
-          { userUid: ctx.userUid, "target.type": target.type, "target.identifier": target.identifier },
-          {
-            $set: {
-              userUid: ctx.userUid,
-              target,
-              attestation: { ownershipConfirmed: true, basis: "owner" },
-              scopes,
-              authorizationVersion: CURRENT_TARGET_AUTH_VERSION,
-              status: "active",
-              expiresAt: new Date(Date.now() + TARGET_AUTH_TTL_DAYS * 24 * 60 * 60 * 1000),
-              revokedAt: null,
-              userAgent: "Added from chat with the user's approval",
-            },
-          },
-          { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true },
-        );
+      : upsertAuthorization(ctx.userUid, {
+          target,
+          attestation: { ownershipConfirmed: true, basis: "owner" },
+          scopes,
+          authorizationVersion: CURRENT_TARGET_AUTH_VERSION,
+          expiresAt: new Date(Date.now() + TARGET_AUTH_TTL_DAYS * 24 * 60 * 60 * 1000),
+          userAgent: "Added from chat with the user's approval",
+        });
 
     await moveConversation(ctx.userUid, ctx.conversationId, project.target);
 
@@ -150,11 +137,7 @@ registerTool({
     if (!LOCAL_COMPUTER_TARGET_ENABLED) {
       throw new Error("Global (This PC) is only available in the Antral desktop app (npm run desktop).");
     }
-    const global = await TargetAuthorization.findOne({
-      userUid: ctx.userUid,
-      "target.type": "computer",
-      "target.identifier": "this-pc",
-    });
+    const global = findAuthForTarget(ctx.userUid, "computer", "this-pc");
     if (!global?.isCurrentlyValid()) {
       throw new Error(
         "Global (This PC) isn't authorized yet. Tell the user to pick \"Global (This PC)\" once in the chat's target selector and confirm it; after that, switching is instant.",

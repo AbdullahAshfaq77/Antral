@@ -1,4 +1,4 @@
-import { AccountConsent, TargetAuthorization } from "../../models/consent.model.js";
+import { findConsent, findAuthById } from "../../data/consent.js";
 import { missingAccountDocuments } from "../../middleware/requireConsent.js";
 import { effectiveScopes } from "../policies.js";
 import { getTool } from "./tools/index.js";
@@ -18,10 +18,8 @@ export const approvalRuleFor = (tool, args, target) =>
 // kill-switch stops a run that is already in progress.
 // Returns { denial } or { auth }.
 const checkPermission = async ({ userUid, authorizationId, scope }) => {
-  const [consent, auth] = await Promise.all([
-    AccountConsent.findOne({ userUid }),
-    TargetAuthorization.findById(authorizationId),
-  ]);
+  const consent = findConsent(userUid);
+  const auth = findAuthById(authorizationId);
   if (missingAccountDocuments(consent).length) return { denial: "Account consent is no longer active." };
   if (!auth || auth.userUid !== userUid || !auth.isCurrentlyValid()) {
     return { denial: "The target authorization was revoked or has expired." };

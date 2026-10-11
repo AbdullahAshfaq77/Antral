@@ -42,10 +42,12 @@ No hosting, no cost to us, no shared keys.
             `agent/data/consent.js` and `agent/data/agentRuns.js` (returned
             objects keep `isCurrentlyValid()`/`versionOf()`). Nothing imports
             them yet, so the app is unchanged.
-      - [ ] Wiring: swap the ~40 call sites across ~11 files (controllers,
-            orchestrator, approvals, executor, runLog, permissions, projects,
-            requireConsent) and drop MongoDB from the agent startup. Then re-test
-            the full flow in dev. After this the app needs NO MongoDB at all.
+      - [x] Wiring: all ~40 call sites across 11 files swapped to the data
+            modules; Mongo dropped from the agent startup. Every rewired module
+            parses and imports cleanly; no Mongoose/Redis refs remain anywhere.
+            **The whole app is now SQLite-only — no MongoDB, no Redis.**
+            Needs full-flow dev re-test (authorize target, message, approve a
+            change, toggle a permission, history).
 
 ## Central user tracking (separate, after storage)
 Identity + activity only, admin-only. Firebase Auth already lists every user

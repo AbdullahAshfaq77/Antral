@@ -1,7 +1,13 @@
-import mongoose from "mongoose";
-import { AgentRun } from "../models/agentRun.model.js";
+import {
+  existsActive,
+  existsActiveForAuth,
+  listRuns as listRunsData,
+  getRun as getRunData,
+  listAwaiting,
+  listByConversation,
+} from "../data/agentRuns.js";
 import { getTool, listTools, publicTool } from "../lib/agent/tools/index.js";
-import { TargetAuthorization } from "../models/consent.model.js";
+import { findAuthByIdUser, setAlwaysAllow, setAuthStatus } from "../data/consent.js";
 import { startRun, cancelRun, isRunActive } from "../lib/agent/orchestrator.js";
 import { DECISIONS, resolveApproval } from "../lib/agent/approvals.js";
 import {
@@ -36,7 +42,7 @@ export const createRun = async (req, res, next) => {
     }
 
     // One run at a time per user keeps actions on their machine easy to follow.
-    if (await AgentRun.exists({ userUid: req.user.uid, status: { $in: ACTIVE_STATUSES } })) {
+    if (existsActive(req.user.uid, ACTIVE_STATUSES)) {
       return res.status(409).json({ message: "An agent run is already in progress. Wait for it or cancel it first." });
     }
 
@@ -79,21 +85,14 @@ export const createRun = async (req, res, next) => {
 // GET /runs — the user's recent runs (without step detail).
 export const listRuns = async (req, res, next) => {
   try {
-    const runs = await AgentRun.find({ userUid: req.user.uid })
-      .select("-steps")
-      .sort({ createdAt: -1 })
-      .limit(20)
-      .lean();
+    const runs = listRunsData(req.user.uid, { limit: 20 });
     return res.json({ runs });
   } catch (error) {
     return next(error);
   }
 };
 
-const findOwnRun = async (req) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return null;
-  return AgentRun.findOne({ _id: req.params.id, userUid: req.user.uid }).lean();
-};
+const findOwnRun = async (req) => getRunData(req.params.id, req.user.uid);
 
 // GET /runs/:id — one run with its full audit log of steps.
 export const getRun = async (req, res, next) => {
@@ -124,9 +123,7 @@ export const cancelRunHandler = async (req, res, next) => {
 // GET /approvals — actions waiting for the user's decision, across runs.
 export const listPendingApprovals = async (req, res, next) => {
   try {
-    const runs = await AgentRun.find({ userUid: req.user.uid, status: "awaiting_approval" })
-      .select("task target pendingApproval createdAt")
-      .lean();
+    const runs = listAwaiting(req.user.uid);
     return res.json({
       approvals: runs
         .filter((r) => r.pendingApproval)
@@ -155,10 +152,7 @@ export const answerApproval = async (req, res, next) => {
   }
 };
 
-const findOwnAuthorization = (req) =>
-  mongoose.isValidObjectId(req.params.id)
-    ? TargetAuthorization.findOne({ _id: req.params.id, userUid: req.user.uid })
-    : null;
+const findOwnAuthorization = (req) => findAuthByIdUser(req.params.id, req.user.uid);
 
 // GET /targets/:id/always-allow — the saved "Always allow" rules for a target.
 export const getAlwaysAllow = async (req, res, next) => {
@@ -177,9 +171,9 @@ export const removeAlwaysAllow = async (req, res, next) => {
     const rule = typeof req.body?.rule === "string" ? req.body.rule : null;
     const auth = await findOwnAuthorization(req);
     if (!auth) return res.status(404).json({ message: "Target not found." });
-    auth.alwaysAllow = rule ? auth.alwaysAllow.filter((r) => r !== rule) : [];
-    await auth.save();
-    return res.json({ rules: auth.alwaysAllow });
+    const rules = rule ? auth.alwaysAllow.filter((r) => r !== rule) : [];
+    setAlwaysAllow(auth._id, rules);
+    return res.json({ rules });
   } catch (error) {
     return next(error);
   }
@@ -199,13 +193,8 @@ export const getConversationHandler = async (req, res, next) => {
   try {
     const conversation = await getConversation(req.user.uid, req.params.id);
     if (!conversation) return res.status(404).json({ message: "Conversation not found or expired." });
-    const [messages, runs] = await Promise.all([
-      getMessages(req.user.uid, conversation.id),
-      AgentRun.find({ userUid: req.user.uid, conversationId: conversation.id })
-        .select("task status result error createdAt finishedAt contextTokensUsed contextLimit")
-        .sort({ createdAt: 1 })
-        .lean(),
-    ]);
+    const messages = await getMessages(req.user.uid, conversation.id);
+    const runs = listByConversation(req.user.uid, conversation.id);
     return res.json({ conversation, messages, runs });
   } catch (error) {
     return next(error);
@@ -229,16 +218,10 @@ export const deleteProjectHandler = async (req, res, next) => {
   try {
     const auth = await findOwnAuthorization(req);
     if (!auth || auth.status === "revoked") return res.status(404).json({ message: "Project not found." });
-    const busy = await AgentRun.exists({
-      userUid: req.user.uid,
-      authorizationId: auth._id,
-      status: { $in: ACTIVE_STATUSES },
-    });
+    const busy = existsActiveForAuth(req.user.uid, auth._id, ACTIVE_STATUSES);
     if (busy) return res.status(409).json({ message: "The agent is working in this project. Stop it first." });
 
-    auth.status = "revoked";
-    auth.revokedAt = new Date();
-    await auth.save();
+    setAuthStatus(auth._id, "revoked", { revokedAt: new Date() });
     const chats = await deleteConversationsForTarget(req.user.uid, auth.target);
     return res.json({ message: "Project deleted.", chatsDeleted: chats });
   } catch (error) {

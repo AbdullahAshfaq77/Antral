@@ -1,7 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import connectDb from "./config/db.js";
 import consentRoutes from "./routes/consent.routes.js";
 import agentRoutes from "./routes/agent.routes.js";
 import { markInterruptedRuns } from "./lib/agent/orchestrator.js";
@@ -45,7 +44,6 @@ app.use((err, _req, res, _next) => {
 const start = async () => {
   // Sessions and conversation memory now live in the shared local SQLite
   // database (opened on first use), so no Redis connection is needed.
-  await connectDb();
   await markInterruptedRuns().catch((e) => console.error("Could not mark interrupted runs:", e.message));
   const listening = () => {
     console.log(`agent service is running on port ${port}`);
