@@ -9,6 +9,7 @@
 const { spawn } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
+const os = require('node:os')
 
 // The standalone project service is intentionally omitted: it is unused in the
 // app (the gateway doesn't proxy to it and the agent manages projects itself),
@@ -25,6 +26,18 @@ const serviceEntry = (base, name) =>
   name === 'gateway'
     ? path.join(base, 'backend', 'gateway', 'index.js')
     : path.join(base, 'backend', 'services', name, 'index.js')
+
+// Log files so issues on any machine can be diagnosed (no console in a packaged
+// app). They live next to the local database, in ANTRAL_DATA_DIR/logs.
+const logDir = () => {
+  const dir = path.join(process.env.ANTRAL_DATA_DIR || path.join(os.homedir(), '.antral'), 'logs')
+  try {
+    fs.mkdirSync(dir, { recursive: true })
+  } catch {
+    // ignore
+  }
+  return dir
+}
 
 // Env shared by every service.
 const sharedEnv = () => ({
@@ -46,35 +59,51 @@ const startOne = (base, name, extraEnv = {}) => {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   const tag = `[${name}]`
-  child.stdout.on('data', (d) => process.stdout.write(`${tag} ${d}`))
-  child.stderr.on('data', (d) => process.stderr.write(`${tag} ${d}`))
-  child.on('exit', (code) => console.log(`${tag} exited with code ${code}`))
+  let logStream = null
+  try {
+    logStream = fs.createWriteStream(path.join(logDir(), `${name}.log`), { flags: 'a' })
+    logStream.write(`\n--- ${new Date().toISOString()} starting ${name} ---\n`)
+  } catch {
+    // ignore log file errors
+  }
+  const pipe = (data) => {
+    process.stdout.write(`${tag} ${data}`)
+    try {
+      logStream?.write(data)
+    } catch {
+      // ignore
+    }
+  }
+  child.stdout.on('data', pipe)
+  child.stderr.on('data', pipe)
+  child.on('exit', (code) => pipe(`(exited with code ${code})\n`))
   children.push(child)
   return child
 }
 
-const waitForGateway = async () => {
-  const url = `http://127.0.0.1:${PORTS.gateway}/`
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+// Resolves once the service answers HTTP on its port (any status = listening).
+const waitForService = async (name, { tries = 150 } = {}) => {
+  const url = `http://127.0.0.1:${PORTS[name]}/`
+  for (let attempt = 0; attempt < tries; attempt += 1) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(1000) })
-      if (res.ok) return
+      await fetch(url, { signal: AbortSignal.timeout(1000) })
+      return // any response means it's listening
     } catch {
       // not up yet
     }
     await new Promise((r) => setTimeout(r, 500))
   }
-  throw new Error(`The Antral services did not start (gateway on ${url}).`)
+  throw new Error(`The Antral ${name} service did not start (on 127.0.0.1:${PORTS[name]}).`)
 }
 
 const startServices = async (isPackaged) => {
   const base = baseDir(isPackaged)
-  // Order doesn't strictly matter (they retry their own connections), but start
-  // the backing services before the gateway that proxies to them.
   startOne(base, 'auth')
   startOne(base, 'agent')
   startOne(base, 'gateway', { SERVE_FRONTEND: '1' })
-  await waitForGateway()
+  // Wait for ALL of them before the window loads, so the UI never calls an
+  // endpoint (e.g. /consent/policies on the agent) before its service is ready.
+  await Promise.all([waitForService('auth'), waitForService('agent'), waitForService('gateway')])
 }
 
 const stopServices = () => {
