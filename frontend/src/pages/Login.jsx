@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react'
-import { GithubAuthProvider, GoogleAuthProvider, signInWithCustomToken, signInWithPopup } from 'firebase/auth'
+import { useState } from 'react'
+import {
+  GithubAuthProvider,
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+} from 'firebase/auth'
 import { auth, googleProvider, githubProvider } from '../../utils/firebase.js'
-import { sendEmailCode, verifyEmailCode } from '../../utils/emailAuth.js'
 import AntralLogo from '../components/AntralLogo.jsx'
-import CodeInput from '../components/CodeInput.jsx'
 import NeuralBackground from '../components/NeuralBackground.jsx'
 
 // Same provider, but asks the user to pick which account to sign in with.
@@ -28,9 +32,14 @@ const AUTH_ERRORS = {
   'auth/unauthorized-domain': 'This domain is not authorized for sign-in in Firebase.',
   'auth/operation-not-allowed': 'This sign-in provider is not enabled in Firebase.',
   'auth/user-disabled': 'This account has been disabled.',
+  'auth/invalid-credential': 'Incorrect email or password.',
+  'auth/wrong-password': 'Incorrect email or password.',
+  'auth/user-not-found': 'No account found with that email. Create one below.',
+  'auth/invalid-email': 'Enter a valid email address.',
+  'auth/email-already-in-use': 'An account with this email already exists. Log in instead.',
+  'auth/weak-password': 'Password must be at least 6 characters.',
+  'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
 }
-
-const CODE_LENGTH = 8
 
 // Writes the pointer position (in %) to CSS variables, without re-rendering.
 function trackPointer(e) {
@@ -71,6 +80,15 @@ function MailIcon() {
   )
 }
 
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+      <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function Spinner({ className = 'h-4 w-4 border-white/25 border-t-white' }) {
   return <span className={`animate-spin rounded-full border-2 ${className}`} aria-hidden="true" />
 }
@@ -107,93 +125,40 @@ function ProviderButton({ icon, label, loading, ...props }) {
 
 function Login() {
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [mode, setMode] = useState('signin') // 'signin' | 'signup'
   const [pending, setPending] = useState(null)
   const [error, setError] = useState(null)
-  const [notice, setNotice] = useState(null)
-  const [step, setStep] = useState('email')
-  const [codeEmail, setCodeEmail] = useState('')
-  const [code, setCode] = useState('')
-  const [resendAt, setResendAt] = useState(0)
-  const [now, setNow] = useState(() => Date.now())
-  const resendIn = Math.max(0, Math.ceil((resendAt - now) / 1000))
-
-  useEffect(() => {
-    if (resendAt <= Date.now()) return
-    const timer = setInterval(() => {
-      setNow(Date.now())
-      if (Date.now() >= resendAt) clearInterval(timer)
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [resendAt])
-
-  const startResendTimer = (seconds) => {
-    setNow(Date.now())
-    setResendAt(Date.now() + seconds * 1000)
-  }
 
   const showError = (message) => setError({ message, id: Date.now() })
 
-  const requestCode = async (address) => {
+  const mapAuthError = (err) =>
+    err.code?.startsWith('auth/')
+      ? AUTH_ERRORS[err.code] || 'Sign-in failed. Please try again.'
+      : err.message || 'Sign-in failed. Please try again.'
+
+  const handleEmailSubmit = async (e) => {
+    e.preventDefault()
     setError(null)
-    setNotice(null)
     setPending('email')
     try {
-      const { resendIn: cooldown } = await sendEmailCode(address)
-      if (step === 'code') setNotice({ message: 'A new code is on its way.', id: Date.now() })
-      setCodeEmail(address)
-      setCode('')
-      setStep('code')
-      startResendTimer(cooldown)
-    } catch (err) {
-      // A code was sent to this address moments ago: go back to entering it.
-      if (err.retryAfter && address === codeEmail) {
-        setStep('code')
-        startResendTimer(err.retryAfter)
+      const address = email.trim().toLowerCase()
+      if (mode === 'signup') {
+        await createUserWithEmailAndPassword(auth, address, password)
       } else {
-        showError(err.message)
+        await signInWithEmailAndPassword(auth, address, password)
       }
-    } finally {
-      setPending(null)
-    }
-  }
-
-  const verifyCode = async (value) => {
-    setError(null)
-    setNotice(null)
-    setPending('code')
-    try {
-      const { token } = await verifyEmailCode(codeEmail, value)
-      await signInWithCustomToken(auth, token)
+      // onAuthStateChanged (App.jsx) takes over from here.
     } catch (err) {
-      const message = err.code?.startsWith('auth/')
-        ? AUTH_ERRORS[err.code] || 'Sign-in failed. Please try again.'
-        : err.message
-      showError(message)
-      setCode('')
+      const message = mapAuthError(err)
+      if (message) showError(message)
       setPending(null)
     }
   }
 
-  const handleEmailSubmit = (e) => {
-    e.preventDefault()
-    requestCode(email.trim().toLowerCase())
-  }
-
-  const handleCodeChange = (value) => {
-    setCode(value)
-    if (value.length === CODE_LENGTH && pending === null) verifyCode(value)
-  }
-
-  const handleCodeSubmit = (e) => {
-    e.preventDefault()
-    if (code.length === CODE_LENGTH) verifyCode(code)
-  }
-
-  const handleChangeEmail = () => {
-    setStep('email')
-    setCode('')
+  const toggleMode = () => {
+    setMode((m) => (m === 'signin' ? 'signup' : 'signin'))
     setError(null)
-    setNotice(null)
   }
 
   const handleProviderSignIn = async (name, { pickAccount = false } = {}) => {
@@ -243,125 +208,106 @@ function Login() {
               <span className="text-sm font-semibold tracking-[0.2em] text-neutral-300">ANTRAL</span>
             </div>
 
-            {step === 'email' ? (
-              <>
-                <h1 className="reveal text-[30px] font-semibold leading-tight tracking-tight" style={{ '--i': 1 }}>
-                  Sign in to <span className="text-gradient">Antral</span>
-                </h1>
-                <p className="reveal mb-8 mt-2 text-sm text-neutral-400" style={{ '--i': 2 }}>
-                  Welcome back. Secure every AI model you ship.
-                </p>
+            <h1 className="reveal text-[30px] font-semibold leading-tight tracking-tight" style={{ '--i': 1 }}>
+              {mode === 'signup' ? (
+                <>Create your <span className="text-gradient">Antral</span> account</>
+              ) : (
+                <>Sign in to <span className="text-gradient">Antral</span></>
+              )}
+            </h1>
+            <p className="reveal mb-8 mt-2 text-sm text-neutral-400" style={{ '--i': 2 }}>
+              {mode === 'signup'
+                ? 'Set an email and password to get started.'
+                : 'Welcome back. Secure every AI model you ship.'}
+            </p>
 
-                <form onSubmit={handleEmailSubmit} className="space-y-5">
-                  <div className="reveal" style={{ '--i': 3 }}>
-                    <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-neutral-400">
-                      Email
-                    </label>
-                    <div className="input-wrap relative">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 transition-colors">
-                        <MailIcon />
-                      </span>
-                      <input
-                        id="email"
-                        type="email"
-                        required
-                        autoComplete="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        disabled={pending !== null}
-                        placeholder="name@work-email.com"
-                        className="h-11 w-full rounded-lg border border-white/10 bg-black/40 pl-10 pr-3 text-sm text-white outline-none transition duration-300 placeholder:text-neutral-600 hover:border-white/20 focus:border-indigo-400/60 focus:bg-black/60 focus:shadow-[0_0_0_4px_rgba(99,102,241,0.15)] disabled:opacity-60"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="reveal" style={{ '--i': 4 }}>
-                    <GlowButton type="submit" loading={pending === 'email'} disabled={pending !== null}>
-                      LOG IN
-                    </GlowButton>
-                  </div>
-                </form>
-
-                <div className="reveal my-7 flex items-center gap-3" style={{ '--i': 5 }}>
-                  <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/15" />
-                  <span className="text-[10px] tracking-[0.2em] text-neutral-500">OR</span>
-                  <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/15" />
-                </div>
-
-                <div className="reveal grid grid-cols-1 gap-3 sm:grid-cols-2" style={{ '--i': 6 }}>
-                  <ProviderButton
-                    icon={<GoogleIcon />}
-                    label="Sign in with Google"
-                    loading={pending === 'google'}
+            <form onSubmit={handleEmailSubmit} className="space-y-5">
+              <div className="reveal" style={{ '--i': 3 }}>
+                <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-neutral-400">
+                  Email
+                </label>
+                <div className="input-wrap relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 transition-colors">
+                    <MailIcon />
+                  </span>
+                  <input
+                    id="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     disabled={pending !== null}
-                    onClick={() => handleProviderSignIn('google')}
-                  />
-                  <ProviderButton
-                    icon={<GitHubIcon />}
-                    label="Sign in with GitHub"
-                    loading={pending === 'github'}
-                    disabled={pending !== null}
-                    onClick={() => handleProviderSignIn('github')}
+                    placeholder="name@work-email.com"
+                    className="h-11 w-full rounded-lg border border-white/10 bg-black/40 pl-10 pr-3 text-sm text-white outline-none transition duration-300 placeholder:text-neutral-600 hover:border-white/20 focus:border-indigo-400/60 focus:bg-black/60 focus:shadow-[0_0_0_4px_rgba(99,102,241,0.15)] disabled:opacity-60"
                   />
                 </div>
-              </>
-            ) : (
-              <div className="step-in">
-                <h1 className="text-[30px] font-semibold leading-tight tracking-tight">Check your email</h1>
-                <p className="mb-8 mt-2 text-sm leading-relaxed text-neutral-400">
-                  We sent an {CODE_LENGTH}-character code to{' '}
-                  <span className="break-words font-medium text-neutral-100">{codeEmail}</span>. It expires in 10 minutes.
-                </p>
-
-                <form onSubmit={handleCodeSubmit} className="space-y-5">
-                  <CodeInput
-                    value={code}
-                    onChange={handleCodeChange}
-                    length={CODE_LENGTH}
-                    disabled={pending !== null}
-                    autoFocus
-                  />
-
-                  <GlowButton
-                    type="submit"
-                    loading={pending === 'code'}
-                    disabled={pending !== null || code.length !== CODE_LENGTH}
-                  >
-                    VERIFY &amp; SIGN IN
-                  </GlowButton>
-                </form>
-
-                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs">
-                  <button
-                    type="button"
-                    onClick={handleChangeEmail}
-                    disabled={pending !== null}
-                    className="link-underline text-neutral-400 transition hover:text-neutral-100 disabled:pointer-events-none disabled:opacity-60"
-                  >
-                    &larr; Use a different email
-                  </button>
-                  {resendIn > 0 ? (
-                    <span className="tabular-nums text-neutral-500">Resend code in {resendIn}s</span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => requestCode(codeEmail)}
-                      disabled={pending !== null}
-                      className="link-underline inline-flex items-center gap-2 text-indigo-300 transition hover:text-indigo-200 disabled:pointer-events-none disabled:opacity-60"
-                    >
-                      {pending === 'email' && <Spinner className="h-3 w-3 border-indigo-300/25 border-t-indigo-300" />}
-                      Resend code
-                    </button>
-                  )}
-                </div>
-
-                {notice && (
-                  <p key={notice.id} className="step-in mt-5 text-center text-xs text-emerald-300/90">
-                    {notice.message}
-                  </p>
-                )}
               </div>
-            )}
+
+              <div className="reveal" style={{ '--i': 4 }}>
+                <label htmlFor="password" className="mb-1.5 block text-xs font-medium text-neutral-400">
+                  Password
+                </label>
+                <div className="input-wrap relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 transition-colors">
+                    <LockIcon />
+                  </span>
+                  <input
+                    id="password"
+                    type="password"
+                    required
+                    minLength={6}
+                    autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={pending !== null}
+                    placeholder={mode === 'signup' ? 'At least 6 characters' : 'Your password'}
+                    className="h-11 w-full rounded-lg border border-white/10 bg-black/40 pl-10 pr-3 text-sm text-white outline-none transition duration-300 placeholder:text-neutral-600 hover:border-white/20 focus:border-indigo-400/60 focus:bg-black/60 focus:shadow-[0_0_0_4px_rgba(99,102,241,0.15)] disabled:opacity-60"
+                  />
+                </div>
+              </div>
+
+              <div className="reveal" style={{ '--i': 5 }}>
+                <GlowButton type="submit" loading={pending === 'email'} disabled={pending !== null}>
+                  {mode === 'signup' ? 'CREATE ACCOUNT' : 'LOG IN'}
+                </GlowButton>
+              </div>
+            </form>
+
+            <p className="reveal mt-4 text-center text-xs text-neutral-500" style={{ '--i': 6 }}>
+              {mode === 'signup' ? 'Already have an account? ' : "Don't have an account? "}
+              <button
+                type="button"
+                onClick={toggleMode}
+                disabled={pending !== null}
+                className="link-underline text-indigo-300 transition hover:text-indigo-200 disabled:pointer-events-none disabled:opacity-60"
+              >
+                {mode === 'signup' ? 'Log in' : 'Create one'}
+              </button>
+            </p>
+
+            <div className="reveal my-7 flex items-center gap-3" style={{ '--i': 7 }}>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/15" />
+              <span className="text-[10px] tracking-[0.2em] text-neutral-500">OR</span>
+              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/15" />
+            </div>
+
+            <div className="reveal grid grid-cols-1 gap-3 sm:grid-cols-2" style={{ '--i': 8 }}>
+              <ProviderButton
+                icon={<GoogleIcon />}
+                label="Sign in with Google"
+                loading={pending === 'google'}
+                disabled={pending !== null}
+                onClick={() => handleProviderSignIn('google')}
+              />
+              <ProviderButton
+                icon={<GitHubIcon />}
+                label="Sign in with GitHub"
+                loading={pending === 'github'}
+                disabled={pending !== null}
+                onClick={() => handleProviderSignIn('github')}
+              />
+            </div>
 
             {error && (
               <div

@@ -63,9 +63,19 @@ writes, no server, no shipped secret) with rules allowing admin-only reads.
     "Connect your AI key" step and chat is gated on it.
   - Note: key is stored locally in the app's SQLite file (user's own machine,
     their own key). Could later move to OS keychain / Electron safeStorage.
-- [ ] **Phase 4 — Auth decision**
-  - Keep Firebase login, or switch to a simple local account (less friction,
-    works offline). Needed because data is keyed by user id.
+- [x] **Phase 4 — Auth without the admin key** (chosen: keep Firebase sign-in)
+  - All three methods stay: Google, GitHub, and email — but **email is now
+    password-based** (Firebase client-side), because the old emailed-code flow
+    needed `createCustomToken`, which requires the private admin key we can't ship.
+  - Backend verifies Firebase ID tokens with Google's **public certificates**
+    (`config/firebaseVerify.js`, uses `jose`) instead of firebase-admin — so no
+    secret is shipped. `session.controller` uses it; email-code routes removed;
+    nothing imports the admin key anymore (`config/firebase.js`,
+    `auth.controller.js`, mailer, emailCodes now unused).
+  - Frontend `Login.jsx` → email+password (sign in / create account) + Google/GitHub.
+  - **Needs:** `FIREBASE_PROJECT_ID` in auth env (dev) or a shipped
+    `config/firebase-public.json` {projectId} (packaged, non-secret); and
+    **Email/Password enabled** in the Firebase console.
 - [~] **Phase 5 — Installer + auto-update**
   - [x] No native rebuild needed: better-sqlite3 v13 is N-API, so its prebuilt
         binary works under BOTH Node (dev) and Electron (packaged). `dist` =

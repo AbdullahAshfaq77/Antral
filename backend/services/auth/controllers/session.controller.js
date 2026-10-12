@@ -1,5 +1,4 @@
-import { getAuth } from "firebase-admin/auth";
-import { app } from "../config/firebase.js";
+import { verifyIdToken } from "../config/firebaseVerify.js";
 import { getUserByUid } from "../data/users.js";
 import {
   clearSessionCookie,
@@ -19,7 +18,7 @@ const verifyFirebaseToken = async (req, res) => {
   }
 
   try {
-    return await getAuth(app).verifyIdToken(match[1]);
+    return await verifyIdToken(match[1]);
   } catch (error) {
     if (["auth/argument-error", "auth/id-token-expired", "auth/invalid-id-token"].includes(error.code)) {
       res.status(401).json({ message: "Your sign-in has expired. Please sign in again." });
