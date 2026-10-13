@@ -84,19 +84,22 @@ export const isTargetRoot = (target, root, p) => {
   return pathApi.parse(p).root.toLowerCase() === path.resolve(p).toLowerCase();
 };
 
+// Resolves to `null` if the promise doesn't settle within `ms` — empty optical
+// or disconnected removable drives can make fs.stat block for seconds.
+const withTimeout = (promise, ms) =>
+  Promise.race([promise.catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
+
 export const getComputerRoots = async () => {
   if (process.platform !== "win32") return [path.parse(process.cwd()).root];
-  const roots = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((drive) => `${drive}:\\`);
+  // Skip A:/B: (legacy floppy letters) — almost never real and slow to probe.
+  const letters = "CDEFGHIJKLMNOPQRSTUVWXYZ".split("");
   const available = await Promise.all(
-    roots.map(async (root) => {
-      try {
-        if (!(await fs.stat(root)).isDirectory()) return null;
-        const real = await fs.realpath(root);
-        return isLocalAbsolutePath(real) && !/^(?:\\\\|\/\/)/.test(real) ? root : null;
-      } catch (error) {
-        if (["ENOENT", "ENOTREADY", "EACCES", "ENODEV", "EINVAL", "EIO"].includes(error.code)) return null;
-        throw error;
-      }
+    letters.map(async (drive) => {
+      const root = `${drive}:\\`;
+      const st = await withTimeout(fs.stat(root), 700);
+      if (!st || !st.isDirectory()) return null;
+      const real = await withTimeout(fs.realpath(root), 700);
+      return real && isLocalAbsolutePath(real) && !/^(?:\\\\|\/\/)/.test(real) ? root : null;
     }),
   );
   return available.filter(Boolean);
