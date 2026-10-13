@@ -284,7 +284,11 @@ const consumeStream = async (stream, provider, signal, onToken) => {
     if (!delta) return;
     if (delta.content) {
       text += delta.content;
-      onToken(text);
+      try {
+        onToken(text);
+      } catch {
+        // a live-preview callback must never break the stream
+      }
     }
     for (const tc of delta.tool_calls || []) {
       const i = tc.index ?? 0;
@@ -296,12 +300,30 @@ const consumeStream = async (stream, provider, signal, onToken) => {
     }
   };
   await new Promise((resolve, reject) => {
+    // Watchdog: if the provider stalls mid-stream (no data for a while), stop
+    // waiting so the caller can fall back instead of "loading" forever.
+    let idle;
+    const bumpIdle = () => {
+      if (idle) clearTimeout(idle);
+      idle = setTimeout(() => {
+        stream.destroy();
+        const e = new Error("stream stalled");
+        e.stalled = true;
+        reject(e);
+      }, 45_000);
+    };
+    const cleanup = () => {
+      if (idle) clearTimeout(idle);
+      signal?.removeEventListener("abort", onAbort);
+    };
     const onAbort = () => {
+      cleanup();
       stream.destroy();
       reject(new Error("cancelled"));
     };
     signal?.addEventListener("abort", onAbort, { once: true });
     stream.on("data", (chunk) => {
+      bumpIdle();
       buffer += chunk.toString("utf8");
       let idx;
       while ((idx = buffer.indexOf("\n\n")) !== -1) {
@@ -311,13 +333,14 @@ const consumeStream = async (stream, provider, signal, onToken) => {
       }
     });
     stream.on("end", () => {
-      signal?.removeEventListener("abort", onAbort);
+      cleanup();
       resolve();
     });
     stream.on("error", (e) => {
-      signal?.removeEventListener("abort", onAbort);
+      cleanup();
       reject(e);
     });
+    bumpIdle();
   });
   const message = {
     role: "assistant",
@@ -338,13 +361,33 @@ const chatOnce = async (provider, { messages, tools = [], signal, maxTokens, onT
       ...(maxTokens ? { max_tokens: maxTokens } : {}),
       ...(streaming ? { stream: true, stream_options: { include_usage: true } } : {}),
     };
-    const { data } = await axios.post(`${provider.baseURL}/chat/completions`, body, {
-      headers: { Authorization: `Bearer ${provider.apiKey}`, "Content-Type": "application/json" },
-      timeout: 120_000,
-      signal,
-      ...(streaming ? { responseType: "stream" } : {}),
-    });
-    if (streaming) return await consumeStream(data, provider, signal, onToken);
+    const headers = { Authorization: `Bearer ${provider.apiKey}`, "Content-Type": "application/json" };
+    const url = `${provider.baseURL}/chat/completions`;
+
+    if (streaming) {
+      let res = null;
+      let stalled = false;
+      try {
+        const { data } = await axios.post(url, body, { headers, timeout: 120_000, signal, responseType: "stream" });
+        res = await consumeStream(data, provider, signal, onToken);
+      } catch (error) {
+        if (signal?.aborted || !error.stalled) throw error; // real failure -> outer handling
+        stalled = true; // stalled -> fall through to a reliable non-streaming call
+      }
+      if (!stalled && res && (res.message.content || res.message.tool_calls?.length)) return res;
+      // Stream stalled or came back empty (some free tiers do this with tools):
+      // make one normal request so the run doesn't hang or do nothing.
+      const { data: full } = await axios.post(
+        url,
+        { ...body, stream: undefined, stream_options: undefined },
+        { headers, timeout: 120_000, signal },
+      );
+      const message = full?.choices?.[0]?.message;
+      if (!message) throw new Error("The model returned no message.");
+      return { message, usage: full.usage, provider: provider.name, model: provider.model };
+    }
+
+    const { data } = await axios.post(url, body, { headers, timeout: 120_000, signal });
     const message = data?.choices?.[0]?.message;
     if (!message) throw new Error("The model returned no message.");
     return { message, usage: data.usage, provider: provider.name, model: provider.model };
