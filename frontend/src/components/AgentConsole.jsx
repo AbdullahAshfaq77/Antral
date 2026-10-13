@@ -24,6 +24,7 @@ import {
   getRun,
   listConversations,
   listRuns,
+  openRunStream,
   startRun,
 } from '../../utils/agentApi.js'
 
@@ -147,6 +148,7 @@ function AgentConsole({ profile }) {
   const inputRef = useRef(null)
   const attachmentsRef = useRef([])
   const permissionSteps = useRef(0)
+  const streamTextRef = useRef(null) // live SSE text for the active run (null when not streaming)
   const scrolledFor = useRef({ conversationId: null, length: 0 })
   const conversationIdRef = useRef(null)
   useEffect(() => {
@@ -293,7 +295,14 @@ function AgentConsole({ profile }) {
     const timer = setInterval(async () => {
       try {
         const { run } = await getRun(liveId)
-        setLiveRun((current) => ({ ...run, attachments: current?.attachments || [] }))
+        setLiveRun((current) => {
+          // While SSE is streaming, keep the smooth live text rather than the
+          // (laggier) polled result, so the answer doesn't jump backwards.
+          const streamed = streamTextRef.current
+          const result =
+            streamed != null && streamed.length > (run.result || '').length ? streamed : run.result
+          return { ...run, result, attachments: current?.attachments || [] }
+        })
 
         // The agent changed a permission from chat: refresh Settings right away.
         const changed = (run.steps || []).filter((s) => s.kind === 'tool_result' && s.ok && PERMISSION_TOOLS.test(s.tool)).length
@@ -331,6 +340,29 @@ function AgentConsole({ profile }) {
     }, POLL_MS)
     return () => clearInterval(timer)
   }, [liveId, liveActive, refreshConversations, dispatch])
+
+  // Live token stream (SSE): shows the answer forming in real time. The poll
+  // above still runs for status, steps, approvals and continuedBy, so this is a
+  // pure enhancement — if SSE drops, the poll keeps the UI correct.
+  useEffect(() => {
+    if (!liveId || !liveActive) return undefined
+    const es = openRunStream(liveId, {
+      onText: (text) => {
+        streamTextRef.current = text
+        setLiveRun((cur) => (cur && cur._id === liveId ? { ...cur, result: text } : cur))
+      },
+      onDone: () => {
+        streamTextRef.current = null
+      },
+      onError: () => {
+        streamTextRef.current = null
+      },
+    })
+    return () => {
+      es.close()
+      streamTextRef.current = null
+    }
+  }, [liveId, liveActive])
 
   // Keep the newest message in view, but don't yank the user back down if
   // they scrolled up to read something. Opening a chat, sending, and an

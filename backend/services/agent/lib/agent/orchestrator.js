@@ -11,6 +11,7 @@ import { logStep, finishRun } from "./runLog.js";
 import { limitsFor, estimateTokens } from "./limits.js";
 import { fitContext, toProviderMessages } from "./context.js";
 import { loadHistory, appendTurn, compactConversation } from "./memory.js";
+import { emitRun, closeRunBus } from "./runEvents.js";
 
 // The orchestrator loop: understand → plan → choose tools → execute → observe
 // → continue/fix/retry → report. Runs in the background; every step is written
@@ -143,19 +144,27 @@ const loop = async (run, { tools, root, signal, limits, history, toolsUsed, atta
     }
   };
 
-  // Streams the model's visible text into run.result as it is generated, so the
-  // UI (which polls run.result) shows the answer fill in instead of waiting for
-  // the whole turn. Writes are throttled and redacted; finishRun sets the final
-  // result, so a partial flush that never lands is harmless.
+  // Streams the model's visible text as it is generated. It is pushed live to
+  // the browser over SSE (emitRun) for a real-time, token-by-token feel, and
+  // also flushed to run.result in SQLite (throttled) so a reconnect/poll can
+  // recover. finishRun writes the final result.
   let lastFlush = 0;
+  let lastEmit = 0;
   const onToken = (text) => {
     const now = Date.now();
-    if (now - lastFlush < 500) return;
-    lastFlush = now;
-    try {
-      updateRun(run._id, { result: redactSecrets(text) });
-    } catch {
-      // best-effort live preview; ignore write errors
+    // Live push for smoothness (lightly throttled so updates batch efficiently).
+    if (now - lastEmit >= 80) {
+      lastEmit = now;
+      emitRun(run._id, { type: "text", text: redactSecrets(text) });
+    }
+    // Durable flush (less often; SQLite write).
+    if (now - lastFlush >= 500) {
+      lastFlush = now;
+      try {
+        updateRun(run._id, { result: redactSecrets(text) });
+      } catch {
+        // best-effort; ignore write errors
+      }
     }
   };
 
@@ -316,6 +325,8 @@ export const startRun = async ({ userUid, authorization, target, task, disabledS
         }
       }
       await finishRun(run._id, { status: "completed", result: clean, ...(continuedBy ? { continuedBy } : {}) });
+      emitRun(run._id, { type: "text", text: clean });
+      emitRun(run._id, { type: "done", status: "completed", ...(continuedBy ? { continuedBy } : {}) });
     })
     .catch(async (error) => {
       const cancelled = controller.signal.aborted;
@@ -323,8 +334,12 @@ export const startRun = async ({ userUid, authorization, target, task, disabledS
       await logStep(run._id, { kind: "error", content: message }).catch(() => {});
       await finishRun(run._id, { status: cancelled ? "cancelled" : "failed", error: message }).catch(() => {});
       await remember(run, { answer: `[This request ended without an answer: ${message}]`, toolsUsed, limits });
+      emitRun(run._id, { type: "done", status: cancelled ? "cancelled" : "failed" });
     })
-    .finally(() => active.delete(String(run._id)));
+    .finally(() => {
+      active.delete(String(run._id));
+      closeRunBus(run._id);
+    });
 
   return run;
 };

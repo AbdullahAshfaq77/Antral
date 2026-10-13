@@ -22,6 +22,7 @@ import {
   getDeviceStatus,
   getLlmSettings,
   updateLlmSettings,
+  streamRun,
 } from "../controllers/agent.controller.js";
 
 const router = Router();
@@ -47,6 +48,7 @@ router.delete("/conversations/:id", deleteConversationHandler);
 router.post("/runs", requireAccountConsent, requireTargetAuthorization([]), createRun);
 router.get("/runs", listRuns);
 router.get("/runs/:id", getRun);
+router.get("/runs/:id/stream", streamRun); // live token stream (SSE)
 router.post("/runs/:id/cancel", cancelRunHandler);
 
 // Runs work in the background. When one wants to change something it pauses

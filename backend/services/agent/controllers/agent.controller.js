@@ -6,6 +6,7 @@ import {
   listAwaiting,
   listByConversation,
 } from "../data/agentRuns.js";
+import { subscribeRun } from "../lib/agent/runEvents.js";
 import { getTool, listTools, publicTool } from "../lib/agent/tools/index.js";
 import { findAuthByIdUser, setAlwaysAllow, setAuthStatus } from "../data/consent.js";
 import { startRun, cancelRun, isRunActive } from "../lib/agent/orchestrator.js";
@@ -94,6 +95,60 @@ export const listRuns = async (req, res, next) => {
 };
 
 const findOwnRun = async (req) => getRunData(req.params.id, req.user.uid);
+
+// GET /runs/:id/stream — Server-Sent Events: pushes the model's text live as it
+// is generated, then a "done" event. Falls back gracefully if the run already
+// finished (sends the final text immediately). The UI also still polls, so this
+// is a pure enhancement.
+export const streamRun = (req, res) => {
+  const id = req.params.id;
+  const run = getRunData(id, req.user.uid, { withSteps: false });
+  if (!run) return res.status(404).json({ message: "Run not found." });
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  const send = (event) => {
+    try {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    } catch {
+      // client gone
+    }
+  };
+
+  // Sync the current text immediately so a late subscriber catches up.
+  send({ type: "init", status: run.status, result: run.result || "" });
+
+  if (!ACTIVE_STATUSES.includes(run.status)) {
+    send({ type: "done", status: run.status });
+    return res.end();
+  }
+
+  let ping;
+  const cleanup = () => {
+    clearInterval(ping);
+    unsubscribe();
+  };
+  const unsubscribe = subscribeRun(id, (event) => {
+    send(event);
+    if (event.type === "done") {
+      cleanup();
+      res.end();
+    }
+  });
+  ping = setInterval(() => {
+    try {
+      res.write(": ping\n\n");
+    } catch {
+      // ignore
+    }
+  }, 15000);
+  req.on("close", cleanup);
+  return undefined;
+};
 
 // GET /runs/:id — one run with its full audit log of steps.
 export const getRun = async (req, res, next) => {

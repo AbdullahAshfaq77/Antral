@@ -35,3 +35,30 @@ export const removeAlwaysAllow = (authorizationId, rule) =>
 export const deleteProject = (authorizationId) => request(`/agent/projects/${authorizationId}`, { method: "DELETE" });
 
 export const getDeviceStatus = () => request("/agent/devices");
+
+// Opens a live Server-Sent Events stream of a run's text as the model generates
+// it. Returns the EventSource (call .close() to stop). Same-origin, so the
+// session cookie is sent automatically.
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
+export const openRunStream = (id, { onText, onDone, onError } = {}) => {
+  const es = new EventSource(`${API_BASE}/agent/runs/${id}/stream`, { withCredentials: true });
+  es.onmessage = (e) => {
+    let data;
+    try {
+      data = JSON.parse(e.data);
+    } catch {
+      return;
+    }
+    if (data.type === "init") onText?.(data.result || "");
+    else if (data.type === "text") onText?.(data.text || "");
+    else if (data.type === "done") {
+      onDone?.(data);
+      es.close();
+    }
+  };
+  es.onerror = () => {
+    onError?.();
+    es.close();
+  };
+  return es;
+};
