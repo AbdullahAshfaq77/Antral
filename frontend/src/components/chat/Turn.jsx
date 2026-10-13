@@ -281,8 +281,8 @@ function Turn({ item, live, onAnswer, answering, onImageOpen }) {
       </div>
 
       <div className="flex min-w-0 gap-3">
-        <span className="mt-0.5 hidden h-7 w-7 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.03] sm:grid">
-          <AntralLogo size={16} />
+        <span className="mt-0.5 hidden h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/[0.03] sm:grid">
+          <AntralLogo size={24} />
         </span>
         <div className="min-w-0 flex-1">
           {active && <Activity steps={live?.steps} status={run.status} />}

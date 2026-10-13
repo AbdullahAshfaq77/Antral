@@ -619,7 +619,7 @@ function AgentConsole({ profile }) {
     <div className="flex h-full flex-col">
       <div className="flex h-14 shrink-0 items-center justify-between gap-2.5 px-4">
         <button type="button" onClick={() => navigate('dashboard')} className="flex items-center gap-2.5" aria-label="Antral home">
-          <AntralLogo size={26} />
+          <AntralLogo size={28} />
           <span className="text-sm font-semibold tracking-[0.18em]">ANTRAL</span>
         </button>
         <button
