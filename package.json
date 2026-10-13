@@ -13,8 +13,9 @@
     "build:frontend": "npm --prefix frontend run build",
     "prod": "cross-env ANTRAL_PROD=1 electron desktop/main.cjs",
     "restore:sqlite": "npm --prefix backend install better-sqlite3@13.0.3 --force",
-    "dist": "npm run build:frontend && electron-builder",
-    "dist:publish": "npm run build:frontend && electron-builder --publish always"
+    "clean:dist": "node desktop/clean-dist.cjs",
+    "dist": "npm run clean:dist && npm run build:frontend && electron-builder",
+    "dist:publish": "npm run clean:dist && npm run build:frontend && electron-builder --publish always"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
