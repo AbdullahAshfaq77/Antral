@@ -6,8 +6,8 @@ directories:
   output: dist-desktop
   buildResources: desktop/build
 
-# We rebuild the one native module (better-sqlite3 in backend/) ourselves for
-# Electron's ABI via `npm run rebuild:electron`; don't let electron-builder try.
+# better-sqlite3 v13 is N-API (one prebuilt works for Node and Electron), so no
+# native rebuild is needed; keep electron-builder from trying.
 npmRebuild: false
 
 # Auto-update feed + where `--publish` uploads. Publishing needs a GH_TOKEN.
@@ -43,7 +43,7 @@ extraResources:
 win:
   target:
     - nsis
-  # icon: desktop/build/icon.ico   # add a 256x256 .ico here before release
+  icon: desktop/build/icon.png   # electron-builder generates the .ico from this
 
 nsis:
   oneClick: false

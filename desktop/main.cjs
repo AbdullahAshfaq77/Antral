@@ -1,5 +1,9 @@
 const { app, BrowserWindow, dialog } = require('electron')
+const path = require('node:path')
 const { startServices, stopServices, PORTS } = require('./services.cjs')
+
+// App/window icon (the dragon). Bundled under desktop/build/.
+const appIcon = path.join(__dirname, 'build', 'icon.png')
 
 // Production = the packaged app (or ANTRAL_PROD=1 to test the prod path locally).
 // In production Electron starts the bundled services and loads the app from the
@@ -59,6 +63,7 @@ const createWindow = async () => {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
+    icon: appIcon,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

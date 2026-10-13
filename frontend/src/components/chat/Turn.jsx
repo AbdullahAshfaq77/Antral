@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import Markdown from '../Markdown.jsx'
 import AntralLogo from '../AntralLogo.jsx'
+import dragon from '../../assets/dragon.png'
 import Icon from '../ui/Icon.jsx'
 import { Button, RiskBadge, Spinner } from '../ui/primitives.jsx'
 import { getRun } from '../../../utils/agentApi.js'
@@ -82,7 +83,9 @@ function Activity({ steps, status }) {
   return (
     <div className="mb-4 min-w-0">
       <div className="flex min-h-7 items-center gap-2.5">
-        <span aria-hidden="true" className={`activity-orb h-2.5 w-2.5 shrink-0 rounded-full ${status === 'awaiting_approval' ? 'bg-amber-300' : 'bg-indigo-300'}`} />
+        <span aria-hidden="true" className={`dragon-think shrink-0 ${status === 'awaiting_approval' ? 'is-waiting' : ''}`}>
+          <img src={dragon} width={26} height={26} alt="" draggable="false" />
+        </span>
         <span role="status" aria-live="polite" className="shimmer-text min-w-0 flex-1 truncate text-sm">
           {current}…
         </span>

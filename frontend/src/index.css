@@ -652,3 +652,59 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- Dragon logo + thinking animation ---------- */
+/* The dragon art is on pure black; `screen` makes the black transparent so only
+   the glowing dragon shows over the app's dark surfaces. */
+.dragon-logo {
+  display: block;
+  object-fit: contain;
+  mix-blend-mode: screen;
+}
+.dragon-logo-animated {
+  animation: dragon-float 4.5s ease-in-out infinite;
+}
+@keyframes dragon-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+/* Thinking indicator: the dragon breathes inside a slow, pulsing aura. */
+.dragon-think {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+}
+.dragon-think::before {
+  content: "";
+  position: absolute;
+  inset: -45%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.55), rgba(34, 211, 238, 0.18) 45%, transparent 68%);
+  animation: dragon-aura 2.6s ease-in-out infinite;
+  z-index: 0;
+}
+.dragon-think img {
+  position: relative;
+  z-index: 1;
+  mix-blend-mode: screen;
+  filter: drop-shadow(0 0 5px rgba(99, 102, 241, 0.6));
+  animation: dragon-breathe 2.6s ease-in-out infinite;
+}
+.dragon-think.is-waiting::before {
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.5), transparent 66%);
+  animation-duration: 3.4s;
+}
+@keyframes dragon-breathe {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.07) translateY(-1px); }
+}
+@keyframes dragon-aura {
+  0%, 100% { opacity: 0.35; transform: scale(0.88) rotate(0deg); }
+  50% { opacity: 0.85; transform: scale(1.18) rotate(8deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dragon-logo-animated, .dragon-think img, .dragon-think::before { animation: none; }
+}
