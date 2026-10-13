@@ -10,8 +10,12 @@ const MAX_RESULT_CHARS = 30_000;
 export const requiresUserApproval = (tool, target) =>
   tool.mutating || (target?.type === "computer" && tool.name.startsWith("run_"));
 
-export const approvalRuleFor = (tool, args, target) =>
-  target?.type === "computer" ? null : tool.ruleFor ? tool.ruleFor(args) : null;
+// The "Always allow" rule this call would save/match (same idea as Claude
+// Code's "don't ask again"). Read-only commands share one rule per tool.
+export const approvalRuleFor = (tool, args) => {
+  if (tool.ruleFor) return tool.ruleFor(args);
+  return tool.mutating ? null : tool.name;
+};
 
 // Re-checks consent at the moment of each tool call — not just when the run
 // started — so revoking a target, withdrawing consent or flipping a
@@ -53,11 +57,11 @@ export const executeToolCall = async ({ name, args, run, ctx }) => {
   let { denial, auth } = await checkPermission(permission);
   if (denial) return { ok: false, denied: true, content: `Denied: ${denial}`, durationMs: elapsed() };
 
-  // This PC always asks before changes or commands, including read-only shell
-  // commands; saved "Always allow" rules do not bypass that boundary.
+  // Changes and commands ask first unless the user saved an "Always allow"
+  // rule for this target that covers the call.
   const needsApproval = requiresUserApproval(tool, run.target);
   if (needsApproval) {
-    const rule = approvalRuleFor(tool, args, run.target);
+    const rule = approvalRuleFor(tool, args);
     if (!(rule && auth.alwaysAllow.includes(rule))) {
       const decision = await requestApproval({
         run,

@@ -1,6 +1,6 @@
 {
   "name": "ai-security",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Antral — agentic security team. Root launcher for all services.",
   "author": "Antral",

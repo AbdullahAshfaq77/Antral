@@ -54,15 +54,15 @@ function CodeBlock({ children }) {
 }
 
 const components = {
-  h1: ({ children }) => <h1 className="mt-7 text-2xl font-semibold tracking-tight text-white first:mt-0">{children}</h1>,
-  h2: ({ children }) => <h2 className="mt-7 text-xl font-semibold tracking-tight text-white first:mt-0">{children}</h2>,
-  h3: ({ children }) => <h3 className="mt-6 text-lg font-semibold text-white first:mt-0">{children}</h3>,
-  h4: ({ children }) => <h4 className="mt-5 text-base font-semibold text-white first:mt-0">{children}</h4>,
-  p: ({ children }) => <p className="my-4 break-words leading-7 text-neutral-300 first:mt-0 last:mb-0">{children}</p>,
-  ul: ({ children }) => <ul className="my-4 list-disc space-y-2 pl-6 leading-7 text-neutral-300">{children}</ul>,
-  ol: ({ children }) => <ol className="my-4 list-decimal space-y-2 pl-6 leading-7 text-neutral-300">{children}</ol>,
-  li: ({ children }) => <li className="ps-1 marker:text-neutral-500">{children}</li>,
-  strong: ({ children }) => <strong className="font-semibold text-neutral-100">{children}</strong>,
+  h1: ({ children }) => <h1 className="mt-8 mb-3 text-xl font-semibold tracking-tight text-white first:mt-0">{children}</h1>,
+  h2: ({ children }) => <h2 className="mt-8 mb-3 text-lg font-semibold tracking-tight text-white first:mt-0">{children}</h2>,
+  h3: ({ children }) => <h3 className="mt-6 mb-2 text-base font-semibold text-white first:mt-0">{children}</h3>,
+  h4: ({ children }) => <h4 className="mt-5 mb-2 text-[15px] font-semibold text-white first:mt-0">{children}</h4>,
+  p: ({ children }) => <p className="my-3 break-words leading-7 text-neutral-200 first:mt-0 last:mb-0">{children}</p>,
+  ul: ({ children }) => <ul className="my-3 list-disc space-y-1.5 pl-6 leading-7 text-neutral-200 [&_ul]:my-1.5 [&_ol]:my-1.5">{children}</ul>,
+  ol: ({ children }) => <ol className="my-3 list-decimal space-y-1.5 pl-6 leading-7 text-neutral-200 [&_ul]:my-1.5 [&_ol]:my-1.5">{children}</ol>,
+  li: ({ children }) => <li className="ps-1 marker:text-neutral-500 [&>p]:my-1">{children}</li>,
+  strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
   em: ({ children }) => <em className="italic text-neutral-200">{children}</em>,
   code: ({ className, children, ...props }) => (
     <code
@@ -91,7 +91,7 @@ const components = {
   ),
   thead: ({ children }) => <thead className="bg-white/[0.04] text-neutral-100">{children}</thead>,
   th: ({ children }) => <th className="border-b border-white/10 px-3 py-2 font-medium">{children}</th>,
-  td: ({ children }) => <td className="border-b border-white/[0.06] px-3 py-2 align-top text-neutral-300">{children}</td>,
+  td: ({ children }) => <td className="border-b border-white/[0.06] px-3 py-2 align-top text-neutral-200">{children}</td>,
   input: ({ checked, ...props }) => (
     <input type="checkbox" checked={checked} readOnly className="mr-2 accent-indigo-400" {...props} />
   ),

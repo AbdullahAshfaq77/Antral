@@ -353,7 +353,7 @@ registerTool({
     if (action === "press_key") return `Press ${key} on Android device ${serial}`;
     return `Interact with Android device ${serial}`;
   },
-  ruleFor: () => null,
+  ruleFor: ({ serial, action }) => (serial && action ? `android:${serial}:${action}` : null),
   run: async (args, { signal }) => {
     await requireConnectedUsbDevice(args.serial, signal);
     const commandArgs = buildAndroidActionArgs(args);

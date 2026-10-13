@@ -294,7 +294,10 @@ registerTool({
       : appId
         ? `Launch app ${appId}`
         : `Open ${openPath} in its default program`,
-  ruleFor: () => null,
+  ruleFor: ({ executable, appId, openPath }) => {
+    const what = executable || appId || openPath;
+    return what ? `launch:${String(what).toLowerCase()}` : null;
+  },
   run: async ({ executable, arguments: rawArgs, appId, openPath, workingDirectory }, { target, root, signal }) => {
     if (!isWindows) throw new Error("Launching applications is only available on Windows.");
     if ([executable, appId, openPath].filter(Boolean).length !== 1) {
@@ -402,7 +405,8 @@ registerTool({
     required: ["pid", "expectedName"],
   },
   describe: ({ pid, expectedName, force }) => `${force ? "Force-end" : "Close"} ${expectedName} (PID ${pid})`,
-  ruleFor: () => null,
+  ruleFor: ({ expectedName, force }) =>
+    expectedName ? `${force ? "force_close" : "close"}:${String(expectedName).toLowerCase()}` : null,
   run: async ({ pid, expectedName, force = false }, { signal }) => {
     if (!isWindows) throw new Error("Process control is only available on Windows.");
     if (!Number.isInteger(pid) || pid <= 4) throw new Error("pid must be a real process id.");

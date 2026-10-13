@@ -13,7 +13,14 @@ import { ACTIVE } from '../../lib/runs.js'
 const describeRule = (rule) => {
   if (!rule) return null
   if (rule.startsWith('run_command:')) return `Always allow “${rule.slice(12)}” commands on this target`
+  if (rule.startsWith('run_command_exact:')) return `Always allow this exact command on this target`
+  if (rule.startsWith('launch:')) return `Always allow launching ${rule.slice(7)} on this target`
+  if (rule.startsWith('close:')) return `Always allow closing ${rule.slice(6)} on this target`
+  if (rule.startsWith('force_close:')) return `Always allow force-ending ${rule.slice(12)} on this target`
+  if (rule.startsWith('android:')) return `Always allow this Android action on this device`
   const names = {
+    run_powershell_readonly: 'read-only PowerShell commands',
+    delete_path: 'deleting files',
     write_file: 'writing files',
     edit_file: 'editing files',
     make_directory: 'creating folders',

@@ -160,8 +160,7 @@ registerTool({
     required: ["path"],
   },
   describe: ({ path: p, recursive }) => `Delete ${p}${recursive ? " (folder and everything in it)" : ""}`,
-  // Deletes are never covered by "always allow"; each one is confirmed.
-  ruleFor: () => null,
+  ruleFor: () => "delete_path",
   run: async ({ path: p, recursive = false }, ctx) => {
     const target = await resolveTargetPath(ctx.target, ctx.root, p);
     if (isTargetRoot(ctx.target, ctx.root, target)) throw new Error("The target root itself can't be deleted.");
@@ -209,10 +208,13 @@ registerTool({
     required: ["command"],
   },
   describe: ({ command }) => `Run: ${command}`,
+  // Compound commands (pipes, ;, &&) can only be always-allowed verbatim.
   ruleFor: ({ command }) =>
-    typeof command === "string" && command.trim() && !COMPOUND.test(command)
-      ? `run_command:${commandPrefix(command)}`
-      : null,
+    typeof command !== "string" || !command.trim()
+      ? null
+      : COMPOUND.test(command)
+        ? `run_command_exact:${command.trim()}`
+        : `run_command:${commandPrefix(command)}`,
   run: async ({ command, timeoutSeconds = 120 }, { root, signal }) => {
     if (typeof command !== "string" || !command.trim()) throw new Error("command is required.");
     if (command.length > 2000) throw new Error("command is too long.");

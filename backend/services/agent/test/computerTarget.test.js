@@ -34,7 +34,7 @@ test("global PowerShell inspection permits local absolute paths but still reject
   assert.equal(validateReadOnlyCommand('Get-ChildItem "\\\\server\\share"', { computerTarget: true }).ok, false);
 });
 
-test("This PC requires approval for every command and change, without an always-allow rule", () => {
+test("This PC asks before commands and changes, and offers an always-allow rule", () => {
   const computer = { type: "computer" };
   const local = { type: "local" };
   const readCommand = { name: "run_powershell_readonly", mutating: false, ruleFor: () => "read_command" };
@@ -42,10 +42,10 @@ test("This PC requires approval for every command and change, without an always-
   const readFile = { name: "read_file", mutating: false, ruleFor: () => null };
 
   assert.equal(requiresUserApproval(readCommand, computer), true);
-  assert.equal(approvalRuleFor(readCommand, {}, computer), null);
+  assert.equal(approvalRuleFor(readCommand, {}), "read_command");
   assert.equal(requiresUserApproval(writeFile, computer), true);
-  assert.equal(approvalRuleFor(writeFile, {}, computer), null);
+  assert.equal(approvalRuleFor(writeFile, {}), "write_file");
   assert.equal(requiresUserApproval(readFile, computer), false);
   assert.equal(requiresUserApproval(readCommand, local), false);
-  assert.equal(approvalRuleFor(writeFile, {}, local), "write_file");
+  assert.equal(approvalRuleFor({ name: "run_powershell_readonly", mutating: false }, {}), "run_powershell_readonly");
 });
