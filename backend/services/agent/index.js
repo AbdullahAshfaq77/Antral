@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "../../shared/dns.js"; // pin DNS so LLM provider hosts resolve reliably
 import express from "express";
 import cors from "cors";
 import consentRoutes from "./routes/consent.routes.js";

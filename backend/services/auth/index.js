@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "../../shared/dns.js"; // pin DNS so googleapis.com (Firebase certs) resolves
 import express from "express";
 import authRoutes from "./routes/auth.routes.js"
 

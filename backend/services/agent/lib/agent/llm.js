@@ -163,9 +163,12 @@ const retryDelayMs = (error, attempt) => {
   return 1_000 * 2 ** attempt;
 };
 
+const NETWORK_CODES = ["ECONNRESET", "ENOTFOUND", "EAI_AGAIN", "ETIMEDOUT", "ECONNREFUSED", "EPIPE"];
 const isRetryable = (error) => {
   const status = error.response?.status;
-  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504 || error.code === "ECONNRESET";
+  if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) return true;
+  // Transient network/DNS blips (e.g. a momentary resolver failure).
+  return NETWORK_CODES.includes(error.code) || NETWORK_CODES.some((c) => (error.message || "").includes(c));
 };
 
 // The request was bigger than the provider accepts in one go (Groq answers

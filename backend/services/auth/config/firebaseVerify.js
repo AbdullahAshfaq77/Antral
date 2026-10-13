@@ -11,15 +11,28 @@ const CERTS_URL =
 let certs = null;
 let certsExpireAt = 0;
 
+// Fetch Google's signing certs, retrying transient network/DNS blips. Keeps the
+// previously fetched certs as a fallback so a momentary outage doesn't break
+// sign-in (Google rotates them roughly daily, so slightly stale is still valid).
 const loadCerts = async () => {
   if (certs && Date.now() < certsExpireAt) return certs;
-  const res = await fetch(CERTS_URL);
-  if (!res.ok) throw new Error(`Could not fetch Google signing certificates (${res.status}).`);
-  const data = await res.json(); // { "<kid>": "-----BEGIN CERTIFICATE-----..." }
-  const maxAge = /max-age=(\d+)/.exec(res.headers.get("cache-control") || "");
-  certsExpireAt = Date.now() + (maxAge ? Number(maxAge[1]) : 3600) * 1000;
-  certs = data;
-  return certs;
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const res = await fetch(CERTS_URL, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) throw new Error(`Could not fetch Google signing certificates (${res.status}).`);
+      const data = await res.json(); // { "<kid>": "-----BEGIN CERTIFICATE-----..." }
+      const maxAge = /max-age=(\d+)/.exec(res.headers.get("cache-control") || "");
+      certsExpireAt = Date.now() + (maxAge ? Number(maxAge[1]) : 3600) * 1000;
+      certs = data;
+      return certs;
+    } catch (error) {
+      lastError = error;
+      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+    }
+  }
+  if (certs) return certs; // better stale than a failed login on a blip
+  throw lastError;
 };
 
 // The Firebase project id (NOT a secret — it's in the frontend bundle too).
