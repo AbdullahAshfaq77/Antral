@@ -43,6 +43,8 @@ function Composer({
   placeholder = 'Ask anything',
   inputRef,
   footer,
+  planMode = false,
+  onPlanModeChange,
 }) {
   const fileRef = useRef(null)
   const localRef = useRef(null)
@@ -194,6 +196,20 @@ function Composer({
           </button>
         )}
       </div>
+      {onPlanModeChange && (
+        <label className="inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-xs text-neutral-400 transition hover:bg-white/[0.04] hover:text-neutral-200">
+          <input
+            type="checkbox"
+            checked={planMode}
+            disabled={busy || attachments.length > 0}
+            onChange={(event) => onPlanModeChange(event.target.checked)}
+            className="accent-indigo-400"
+          />
+          <span>Plan and execute</span>
+          <span className="text-neutral-600" title="The agent proposes a task plan for your approval, then works through it with verification and checkpoints.">ⓘ</span>
+          {attachments.length > 0 && <span className="text-neutral-600">Remove images to use plan mode</span>}
+        </label>
+      )}
       {(nearLimit || footer) && (
         <div className="flex items-center justify-between gap-3 px-3 pb-1 text-[11px] text-neutral-500">
           <span className="min-w-0 truncate">{footer}</span>

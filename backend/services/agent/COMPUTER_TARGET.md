@@ -14,3 +14,10 @@ To enable changes or PowerShell, grant the corresponding target permission in
 Settings. Every file change and every PowerShell command then requires a
 separate approval. Saved "Always allow" rules do not bypass approvals for This
 PC. Direct network-share and device paths are refused.
+
+When a specific local folder is selected in the desktop app, you can separately
+grant **Find & open applications** and **View & close running programs** for
+that folder target. Those permissions allow only the named application/process
+tools to act across this PC; file access and other tools remain limited to the
+selected folder. App launches require approval, and every process close requires
+a fresh approval. Force closing is only available after a graceful close fails.

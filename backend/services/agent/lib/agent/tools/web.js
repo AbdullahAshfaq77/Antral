@@ -2,6 +2,7 @@ import dns from "node:dns/promises";
 import net from "node:net";
 import axios from "axios";
 import { registerTool } from "./registry.js";
+import { getToolApiSettings } from "../../../data/settings.js";
 
 // Web research: search the public web and read pages. Fetching is limited to
 // public internet addresses, so a page (or a prompt-injected instruction) can't
@@ -11,7 +12,8 @@ import { registerTool } from "./registry.js";
 //   site API (Reddit) -> direct fetch -> Crawl4AI -> Tavily Extract -> Wayback Machine
 // Every URL passes the public-address check before any of them sees it, and the
 // fallbacks only get a URL whose redirects the direct fetch already checked.
-// Each optional source switches on when its .env setting is present.
+// Optional sources use credentials entered in Settings, with environment
+// variables retained only as a backward-compatible fallback.
 
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 const MAX_TEXT_CHARS = 20_000;
@@ -113,10 +115,24 @@ const htmlToText = (html) =>
 const pageFromResponse = (res) => {
   const isHtml = /html|xml/.test(res.type) || /^\s*</.test(res.body);
   if (!isHtml && !/text|json/.test(res.type)) return { url: res.url, binary: res.type || "binary" };
+  const imageTag = isHtml
+    ? res.body.match(/<meta\b[^>]*>/gi)?.find((tag) => /(?:property|name)\s*=\s*["'](?:og:image(?::secure_url)?|twitter:image)["']/i.test(tag))
+    : null;
+  const imageValue = imageTag && /content\s*=\s*["']([^"']+)["']/i.exec(imageTag)?.[1];
+  let image;
+  if (imageValue) {
+    try {
+      const candidate = new URL(decode(imageValue), res.url);
+      if (candidate.protocol === "https:") image = candidate.href;
+    } catch {
+      // Ignore invalid preview metadata and keep the page text usable.
+    }
+  }
   return {
     url: res.url,
     isHtml,
     raw: res.body,
+    image,
     title: isHtml ? htmlToText((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(res.body) || [])[1] || "") : "",
     text: isHtml ? htmlToText(res.body) : res.body,
   };
@@ -129,9 +145,9 @@ const looksEmpty = (page) =>
   ((page.text.length < 300 && /<script/i.test(page.raw)) ||
     (page.text.length < 1500 && /enable javascript|just a moment|checking your browser|are you a robot/i.test(page.raw)));
 
-const formatPage = ({ title, url, text, via }) => {
+const formatPage = ({ title, url, text, via, image }) => {
   const clipped = text.length > MAX_TEXT_CHARS ? `${text.slice(0, MAX_TEXT_CHARS)}\n… page truncated` : text;
-  return `${title ? `${title}\n` : ""}${url}${via ? `\n(${via})` : ""}\n\n${clipped}`;
+  return `${title ? `${title}\n` : ""}${url}${via ? `\n(${via})` : ""}${image ? `\nPreview image: ${image}` : ""}\n\n${clipped}`;
 };
 
 // A short reason for the "tried and failed" list.
@@ -213,8 +229,9 @@ const readReddit = async (url, signal) => {
 // --- Fallback readers -------------------------------------------------------
 
 const readWithCrawl4ai = async (url, signal) => {
-  const base = process.env.CRAWL4AI_URL.replace(/\/+$/, "");
-  const token = process.env.CRAWL4AI_API_TOKEN;
+  const settings = getToolApiSettings();
+  const base = String(settings.crawl4aiUrl || process.env.CRAWL4AI_URL || process.env.CRAWLAI_URL || "").replace(/\/+$/, "");
+  const token = settings.crawl4aiApiToken || process.env.CRAWL4AI_API_TOKEN || process.env.CRAWLAI_API_TOKEN;
   const { data } = await axios.post(
     `${base}/md`,
     { url, f: "fit" },
@@ -226,10 +243,11 @@ const readWithCrawl4ai = async (url, signal) => {
 };
 
 const readWithTavily = async (url, signal) => {
+  const apiKey = getToolApiSettings().tavilyApiKey || process.env.TAVILY_API_KEY;
   const { data } = await axios.post(
     "https://api.tavily.com/extract",
     { urls: [url], format: "markdown" },
-    { headers: { Authorization: `Bearer ${process.env.TAVILY_API_KEY}` }, signal, timeout: 60_000 },
+    { headers: { Authorization: `Bearer ${apiKey}` }, signal, timeout: 60_000 },
   );
   const hit = data?.results?.[0];
   if (!hit?.raw_content?.trim()) throw new Error(data?.failed_results?.[0]?.error || "no readable content");
@@ -259,22 +277,25 @@ const readFromWayback = async (url, signal) => {
 };
 
 const FALLBACK_READERS = [
-  { name: "Crawl4AI", enabled: () => Boolean(process.env.CRAWL4AI_URL), read: readWithCrawl4ai },
-  { name: "Tavily Extract", enabled: () => Boolean(process.env.TAVILY_API_KEY), read: readWithTavily },
+  { name: "Crawl4AI", enabled: () => Boolean(getToolApiSettings().crawl4aiUrl || process.env.CRAWL4AI_URL || process.env.CRAWLAI_URL), read: readWithCrawl4ai },
+  { name: "Tavily Extract", enabled: () => Boolean(getToolApiSettings().tavilyApiKey || process.env.TAVILY_API_KEY), read: readWithTavily },
   { name: "Wayback Machine", enabled: () => true, read: readFromWayback },
 ];
 
 // --- Search -----------------------------------------------------------------
 
 const searchTavily = async (q, signal) => {
+  const apiKey = getToolApiSettings().tavilyApiKey || process.env.TAVILY_API_KEY;
   const { data } = await axios.post(
     "https://api.tavily.com/search",
     { query: q, max_results: 8 },
-    { headers: { Authorization: `Bearer ${process.env.TAVILY_API_KEY}` }, signal, timeout: 30_000 },
+    { headers: { Authorization: `Bearer ${apiKey}` }, signal, timeout: 30_000 },
   );
-  return (data?.results || []).map(
-    (r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${String(r.content || "").replace(/\s+/g, " ").slice(0, 300)}`,
-  );
+  return (data?.results || []).map((result) => ({
+    title: String(result.title || ""),
+    url: String(result.url || ""),
+    snippet: String(result.content || "").replace(/\s+/g, " ").slice(0, 300),
+  }));
 };
 
 const searchDuckDuckGo = async (q, signal) => {
@@ -296,10 +317,33 @@ const searchDuckDuckGo = async (q, signal) => {
     if (wrapped) href = decodeURIComponent(wrapped[1]);
     if (href.startsWith("//")) href = `https:${href}`;
     if (/duckduckgo\.com\/y\.js/.test(href)) continue; // ads
-    results.push(`${results.length + 1}. ${htmlToText(m[2])}\n   ${href}\n   ${htmlToText(m[3] || "").slice(0, 300)}`);
+    results.push({
+      title: htmlToText(m[2]),
+      url: href,
+      snippet: htmlToText(m[3] || "").slice(0, 300),
+    });
   }
   return results;
 };
+
+const addSearchPreviews = async (results, signal) =>
+  Promise.all(
+    results.map(async (result, index) => {
+      let image = "";
+      if (index < 5) {
+        try {
+          const response = await fetchPublic(result.url, { signal });
+          if (response.status >= 200 && response.status < 300) {
+            image = pageFromResponse(response).image || "";
+          }
+        } catch (error) {
+          if (signal?.aborted) throw error;
+          console.warn(`Could not retrieve a preview image for web search result ${result.url}:`, error.message);
+        }
+      }
+      return `${index + 1}. ${result.title}\n   ${result.url}\n   ${result.snippet}${image ? `\n   Preview image: ${image}` : ""}`;
+    }),
+  );
 
 registerTool({
   name: "web_search",
@@ -310,16 +354,27 @@ registerTool({
   targetTypes: ["*"],
   parameters: {
     type: "object",
-    properties: { query: { type: "string", description: "What to search for." } },
+    properties: {
+      query: { type: "string", description: "What to search for." },
+      include_previews: {
+        type: "boolean",
+        description: "For product, tool, service, course, or resource recommendations, retrieve verified page preview images for up to five results.",
+      },
+    },
     required: ["query"],
   },
-  run: async ({ query }, { signal }) => {
+  run: async ({ query, include_previews = false }, { signal }) => {
     const q = String(query || "").trim().slice(0, 300);
     if (!q) throw new Error("query is required.");
-    if (process.env.TAVILY_API_KEY) {
+    if (getToolApiSettings().tavilyApiKey || process.env.TAVILY_API_KEY) {
       try {
         const results = await searchTavily(q, signal);
-        if (results.length) return results.join("\n");
+        if (results.length) {
+          const output = include_previews
+            ? await addSearchPreviews(results, signal)
+            : results.map((result, index) => `${index + 1}. ${result.title}\n   ${result.url}\n   ${result.snippet}`);
+          return output.join("\n");
+        }
       } catch (e) {
         if (signal?.aborted) throw e;
         // Out of credits or down: fall through to DuckDuckGo.
@@ -327,7 +382,10 @@ registerTool({
     }
     const results = await searchDuckDuckGo(q, signal);
     if (!results.length) return `No results for "${q}" (the search service may be rate-limiting; try again shortly).`;
-    return results.join("\n");
+    const output = include_previews
+      ? await addSearchPreviews(results, signal)
+      : results.map((result, index) => `${index + 1}. ${result.title}\n   ${result.url}\n   ${result.snippet}`);
+    return output.join("\n");
   },
 });
 

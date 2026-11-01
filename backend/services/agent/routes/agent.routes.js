@@ -22,7 +22,16 @@ import {
   getDeviceStatus,
   getLlmSettings,
   updateLlmSettings,
+  testLlmConnection,
+  getToolApiSettingsHandler,
+  updateToolApiSettingsHandler,
   streamRun,
+  approveSupervisorPlanHandler,
+  pauseSupervisorHandler,
+  resumeSupervisorHandler,
+  rollbackSupervisorCheckpointHandler,
+  getSupervisorProjectSettings,
+  updateSupervisorProjectSettings,
 } from "../controllers/agent.controller.js";
 
 const router = Router();
@@ -37,6 +46,9 @@ router.get("/devices", getDeviceStatus);
 // configures this before authorizing any target.
 router.get("/settings/llm", getLlmSettings);
 router.put("/settings/llm", updateLlmSettings);
+router.post("/settings/llm/test", testLlmConnection);
+router.get("/settings/integrations", getToolApiSettingsHandler);
+router.put("/settings/integrations", updateToolApiSettingsHandler);
 
 // Conversation memory (Redis). POST /runs with a conversationId continues one.
 router.get("/conversations", listConversationsHandler);
@@ -50,6 +62,12 @@ router.get("/runs", listRuns);
 router.get("/runs/:id", getRun);
 router.get("/runs/:id/stream", streamRun); // live token stream (SSE)
 router.post("/runs/:id/cancel", cancelRunHandler);
+router.post("/runs/:id/supervisor/approve", requireAccountConsent, approveSupervisorPlanHandler);
+router.post("/runs/:id/supervisor/pause", pauseSupervisorHandler);
+router.post("/runs/:id/supervisor/resume", requireAccountConsent, resumeSupervisorHandler);
+router.post("/runs/:id/supervisor/tasks/:taskId/rollback", requireAccountConsent, rollbackSupervisorCheckpointHandler);
+router.get("/targets/:id/supervisor-settings", getSupervisorProjectSettings);
+router.put("/targets/:id/supervisor-settings", updateSupervisorProjectSettings);
 
 // Runs work in the background. When one wants to change something it pauses
 // and appears here until the user answers Allow once / Always allow / Decline.

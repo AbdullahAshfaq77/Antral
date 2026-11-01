@@ -148,7 +148,114 @@ db.exec(`
     at INTEGER NOT NULL,
     PRIMARY KEY (run_id, seq)
   );
+
+  CREATE TABLE IF NOT EXISTS supervisor_plans (
+    run_id TEXT PRIMARY KEY,
+    user_uid TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'planning',
+    phase TEXT NOT NULL DEFAULT 'intake',
+    plan_json TEXT NOT NULL DEFAULT '{}',
+    plan_md TEXT NOT NULL DEFAULT '',
+    current_task_index INTEGER NOT NULL DEFAULT 0,
+    current_role TEXT NOT NULL DEFAULT '',
+    current_child_run_id TEXT,
+    clarification TEXT NOT NULL DEFAULT '',
+    replan_count INTEGER NOT NULL DEFAULT 0,
+    model_calls INTEGER NOT NULL DEFAULT 0,
+    token_count INTEGER NOT NULL DEFAULT 0,
+    deadline_at INTEGER NOT NULL,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS supervisor_tasks (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    task_order INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    goal TEXT NOT NULL,
+    files_to_read TEXT NOT NULL DEFAULT '[]',
+    files_to_edit TEXT NOT NULL DEFAULT '[]',
+    acceptance_check TEXT NOT NULL DEFAULT '',
+    verify_command TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    iteration_coder_done INTEGER NOT NULL DEFAULT 0,
+    fixer_attempts INTEGER NOT NULL DEFAULT 0,
+    task_model_calls INTEGER NOT NULL DEFAULT 0,
+    task_token_count INTEGER NOT NULL DEFAULT 0,
+    task_deadline_at INTEGER,
+    pending_patches TEXT NOT NULL DEFAULT '[]',
+    replans INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT NOT NULL DEFAULT '',
+    unverified INTEGER NOT NULL DEFAULT 0,
+    checkpoint_path TEXT NOT NULL DEFAULT '',
+    changed_files TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(run_id, task_order)
+  );
+  CREATE INDEX IF NOT EXISTS idx_supervisor_tasks_run ON supervisor_tasks (run_id, task_order);
+
+  CREATE TABLE IF NOT EXISTS supervisor_attempts (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    attempt INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    child_run_id TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    provider TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    result TEXT NOT NULL DEFAULT '',
+    started_at INTEGER NOT NULL,
+    finished_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_supervisor_attempts_task ON supervisor_attempts (task_id, attempt);
+
+  CREATE TABLE IF NOT EXISTS supervisor_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    task_id TEXT,
+    kind TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '{}',
+    at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_supervisor_events_run ON supervisor_events (run_id, id);
+
+  CREATE TABLE IF NOT EXISTS supervisor_project_settings (
+    authorization_id TEXT PRIMARY KEY,
+    user_uid TEXT NOT NULL,
+    godot_path TEXT NOT NULL DEFAULT '',
+    godot_smoke_frames INTEGER NOT NULL DEFAULT 120,
+    verify_commands TEXT NOT NULL DEFAULT '[]',
+    updated_at INTEGER NOT NULL
+  );
 `);
+
+// These tables were introduced while the local supervisor was being added.
+// Keep upgrades safe for a database created by an earlier desktop build that
+// may have already created the initial supervisor tables.
+const ensureColumn = (table, definition) => {
+  const name = definition.trim().split(/\s+/, 1)[0];
+  const columns = new Set(db.pragma(`table_info(${table})`).map((column) => column.name));
+  if (!columns.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+};
+[
+  ["supervisor_plans", "current_role TEXT NOT NULL DEFAULT ''"],
+  ["supervisor_tasks", "iteration_coder_done INTEGER NOT NULL DEFAULT 0"],
+  ["supervisor_tasks", "fixer_attempts INTEGER NOT NULL DEFAULT 0"],
+  ["supervisor_tasks", "task_model_calls INTEGER NOT NULL DEFAULT 0"],
+  ["supervisor_tasks", "task_token_count INTEGER NOT NULL DEFAULT 0"],
+  ["supervisor_tasks", "task_deadline_at INTEGER"],
+  ["supervisor_tasks", "pending_patches TEXT NOT NULL DEFAULT '[]'"],
+].forEach(([table, definition]) => ensureColumn(table, definition));
 
 // ---------------------------------------------------------------------------
 // Key/value store (replaces the Redis commands used for sessions).

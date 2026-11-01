@@ -2,6 +2,8 @@
 import "./filesystem.js";
 import "./powershell.js";
 import "./modify.js";
+import "../taskPatch.js";
+import "../verifier.js";
 import "./memory.js";
 import "./github.js";
 import "./dependencies.js";

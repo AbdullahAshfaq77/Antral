@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { registerTool } from "./registry.js";
 import { runPowerShell } from "../shell.js";
-import { resolveTargetPath } from "../pathGuard.js";
+import { LOCAL_COMPUTER_TARGET_ENABLED } from "../../policies.js";
+import { resolveComputerPath, resolveTargetPath } from "../pathGuard.js";
 
 // Windows applications and processes. Nothing here hardcodes an application:
 // find_application builds a catalog from the places Windows itself records
@@ -14,7 +15,10 @@ import { resolveTargetPath } from "../pathGuard.js";
 
 const isWindows = process.platform === "win32";
 const CATALOG_TTL_MS = 5 * 60_000;
+const DISCOVERED_APP_TTL_MS = 5 * 60_000;
 const MAX_MATCHES = 15;
+const APPLICATION_TARGET_TYPES = LOCAL_COMPUTER_TARGET_ENABLED ? ["computer", "local"] : ["computer"];
+const discoveredApplications = new Map();
 
 // Fixed script — no user input is ever interpolated into it.
 const CATALOG_SCRIPT = `
@@ -205,6 +209,39 @@ export const findApplications = async (query, { signal, deep = false } = {}) => 
     .map(({ score: _s, ...c }) => c);
 };
 
+const rememberApplications = (applications) => {
+  const now = Date.now();
+  for (const [key, expiresAt] of discoveredApplications) {
+    if (expiresAt <= now) discoveredApplications.delete(key);
+  }
+  for (const app of applications) {
+    const key = app.executable
+      ? `exe:${path.resolve(app.executable).toLowerCase()}`
+      : app.appId
+        ? `id:${app.appId.toLowerCase()}`
+        : null;
+    if (key) discoveredApplications.set(key, now + DISCOVERED_APP_TTL_MS);
+  }
+  while (discoveredApplications.size > 200) {
+    discoveredApplications.delete(discoveredApplications.keys().next().value);
+  }
+};
+
+const wasRecentlyDiscovered = ({ executable, appId }) => {
+  const key = executable
+    ? `exe:${path.resolve(executable).toLowerCase()}`
+    : appId
+      ? `id:${appId.toLowerCase()}`
+      : null;
+  const expiresAt = key ? discoveredApplications.get(key) : null;
+  if (!expiresAt) return false;
+  if (expiresAt <= Date.now()) {
+    discoveredApplications.delete(key);
+    return false;
+  }
+  return true;
+};
+
 const PROCESS_SCRIPT =
   "Get-Process | Select-Object Id,ProcessName,Path,MainWindowTitle,@{n='Start';e={if($_.StartTime){$_.StartTime.ToUniversalTime().ToString('o')}}} | ConvertTo-Json -Compress";
 
@@ -242,15 +279,28 @@ const validateArgs = (args) => {
   return args;
 };
 
+export const validateFolderArguments = async (args, root) => {
+  for (const arg of args) {
+    const value = arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : arg;
+    const looksLikePath =
+      /^[a-z]:/i.test(value) ||
+      /^[\\/]{2}/.test(value) ||
+      /^\.{1,2}([\\/]|$)/.test(value) ||
+      /[\\/]/.test(value);
+    if (looksLikePath) await resolveTargetPath({ type: "local" }, root, value);
+  }
+};
+
 registerTool({
   name: "find_application",
   category: "computer",
   description:
     "Find installed applications on this Windows PC by name (e.g. 'godot', 'vs code', 'chrome'). Searches Start-menu shortcuts, " +
     "registered app paths, installed-program entries, Store apps, PATH and common portable-app folders. Returns only candidates " +
-    "whose executable was verified to exist. If several match (e.g. two Godot versions), ask the user which one to use.",
+    "whose executable was verified to exist. In a desktop folder-target chat this only discovers apps; it does not grant access to " +
+    "other files. If several match (e.g. two Godot versions), ask the user which one to use.",
   scope: "launch_applications",
-  targetTypes: ["computer"],
+  targetTypes: APPLICATION_TARGET_TYPES,
   parameters: {
     type: "object",
     properties: {
@@ -263,6 +313,7 @@ registerTool({
     if (!isWindows) throw new Error("Application discovery is only available on Windows.");
     const found = await findApplications(query, { signal, deep: Boolean(deep) });
     if (!found.length) return `No installed application matching "${query}" was found. Try a different name, or deep: true.`;
+    rememberApplications(found);
     return { matches: found.length, candidates: found };
   },
 });
@@ -274,9 +325,10 @@ registerTool({
     "Open an application, or open a file/folder/project. Give `executable` (a verified path from find_application) with optional " +
     "`arguments` (e.g. Godot editor on a project: ['--editor', '--path', 'D:\\\\Games\\\\Racer']), or `appId` for a Store/Start-menu app, " +
     "or only `openPath` to open a document or folder in its default program. Starts the program directly without a shell; " +
-    "the user approves each launch. Reports whether a process actually started.",
+    "folder-target launches are limited to applications just returned by find_application and paths inside that folder. " +
+    "The user approves each launch. Reports whether a process actually started.",
   scope: "launch_applications",
-  targetTypes: ["computer"],
+  targetTypes: APPLICATION_TARGET_TYPES,
   mutating: true,
   parameters: {
     type: "object",
@@ -303,20 +355,30 @@ registerTool({
     if ([executable, appId, openPath].filter(Boolean).length !== 1) {
       throw new Error("Give exactly one of executable, appId or openPath.");
     }
+    if (target?.type === "local" && !openPath && !wasRecentlyDiscovered({ executable, appId })) {
+      throw new Error("For a folder target, first find the application with find_application; only a recently returned candidate can be launched.");
+    }
     const args = validateArgs(rawArgs);
+    if (target?.type === "local") await validateFolderArguments(args, root);
     let file;
     let spawnArgs;
     let cwd;
     let watchPath = null;
 
     if (executable) {
-      const exe = await resolveTargetPath(target, root, executable);
+      const exe = target?.type === "local"
+        ? await resolveComputerPath(executable)
+        : await resolveTargetPath(target, root, executable);
       if (!/\.exe$/i.test(exe)) throw new Error("executable must be an .exe file. Use run_command for scripts.");
       if (!(await fileExists(exe))) throw new Error(`Executable not found: ${exe}`);
       file = exe;
       spawnArgs = args;
       watchPath = exe.toLowerCase();
-      cwd = workingDirectory ? await resolveTargetPath(target, root, workingDirectory) : path.dirname(exe);
+      cwd = workingDirectory
+        ? await resolveTargetPath(target, root, workingDirectory)
+        : target?.type === "local"
+          ? root
+          : path.dirname(exe);
     } else if (appId) {
       if (!APP_ID.test(appId) || appId.includes("..")) throw new Error("appId is not a valid Start-menu app id.");
       file = "explorer.exe";
@@ -360,9 +422,10 @@ registerTool({
   name: "list_processes",
   category: "computer",
   description:
-    "List running programs (PID, name, executable path, window title). Filter by name or window title. Use this to find the exact PID before close_application.",
+    "List running programs on this PC (PID, name, executable path, window title). In a desktop folder-target chat this only exposes process information, " +
+    "not access to other folders. Filter by name or window title. Use this to find the exact PID before close_application.",
   scope: "manage_processes",
-  targetTypes: ["computer"],
+  targetTypes: APPLICATION_TARGET_TYPES,
   parameters: {
     type: "object",
     properties: {
@@ -393,7 +456,7 @@ registerTool({
     "Close one running program by exact PID (from list_processes). Tries a graceful close (like clicking X) first. " +
     "Only set force: true if a graceful close failed and the user wants it ended — unsaved work is lost. Never guess a PID.",
   scope: "manage_processes",
-  targetTypes: ["computer"],
+  targetTypes: APPLICATION_TARGET_TYPES,
   mutating: true,
   parameters: {
     type: "object",
@@ -405,8 +468,7 @@ registerTool({
     required: ["pid", "expectedName"],
   },
   describe: ({ pid, expectedName, force }) => `${force ? "Force-end" : "Close"} ${expectedName} (PID ${pid})`,
-  ruleFor: ({ expectedName, force }) =>
-    expectedName ? `${force ? "force_close" : "close"}:${String(expectedName).toLowerCase()}` : null,
+  ruleFor: () => null,
   run: async ({ pid, expectedName, force = false }, { signal }) => {
     if (!isWindows) throw new Error("Process control is only available on Windows.");
     if (!Number.isInteger(pid) || pid <= 4) throw new Error("pid must be a real process id.");

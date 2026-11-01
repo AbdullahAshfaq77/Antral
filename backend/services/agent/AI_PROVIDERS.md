@@ -1,30 +1,32 @@
-# Cloudflare Workers AI
+# AI providers
 
-The agent can use Cloudflare Workers AI as another OpenAI-compatible chat
-provider, including tool calling. It participates in the existing provider
-fallback chain and is selected automatically when configured after the existing
-Groq, Gemini and OpenRouter providers.
+## Enter your own provider key
 
-## Configure
+In Antral, open **Settings → AI providers**. The first panel only lists provider
+names detected in the agent environment; API key values from `.env` and
+`.env.custom` are ignored for agent requests.
 
-The agent `.env` needs both:
+Choose a provider in the provider grid. Its configuration panel appears below
+the grid. Paste your personal key into **Your API key**, test the connection,
+then select **Save providers**. The provider panel includes the provider's key
+signup page. Free usage and billing rules vary by provider, so check its current
+terms before use.
 
-- `CLOUDFLARE_ACCOUNT_ID` — the Cloudflare account ID.
-- `CLOUDFLARE_API_TOKEN` — a token with Workers AI permissions. Keep the token
-  private and restart the agent service after setting it. Cloudflare's
-  recommended token template grants Workers AI Read and Edit.
+Keys entered in Settings are stored in the local settings database encrypted
+with the current Windows user's DPAPI protection. The API returns only whether
+a key is saved and its final four characters. Provider credentials are local to
+that Antral installation and are never shared with another Antral user.
 
-To select Cloudflare as the preferred provider, set `LLM_PROVIDER=cloudflare`.
-Otherwise, it is used as a fallback after earlier configured providers. The
-default model is `@cf/openai/gpt-oss-20b`; set `LLM_MODEL` to use another
-compatible Workers AI model that supports tool calling.
+## Choose models for agent roles
 
-Cloudflare Workers AI has a daily free allocation, but it is limited; usage
-above the allocation may require a paid Workers plan. Check current Cloudflare
-pricing and usage limits before enabling it as the preferred provider. The
-default model is text-only, so image requests require another configured
-vision-capable provider.
+After saving a provider and its models, use **Agent role models** to select a
+specific model for each role. **Apply recommended settings** selects available
+models according to each role's cost and capability tier. Select **Save role
+assignments** to persist those choices.
 
-`ANYAPI_API_KEY` alone does not identify an API endpoint or model. AnyAPI is
-not automatically used as a model provider; wire it in only after choosing a
-specific API/model endpoint.
+## Custom and local endpoints
+
+Select **Custom OpenAI-compatible endpoint** to enter a provider name and API
+base URL, then add a model ID. HTTPS is required except for local loopback HTTP
+endpoints such as Ollama or LM Studio. The endpoint must support OpenAI-compatible
+chat completions and tool/function calling for agent tools.

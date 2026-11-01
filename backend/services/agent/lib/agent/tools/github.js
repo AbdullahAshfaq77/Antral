@@ -1,5 +1,6 @@
 import { registerTool } from "./registry.js";
 import { github, parseGithubRepo, readGithubFile, cleanRepoPath } from "../targetFiles.js";
+import { getToolApiSettings } from "../../../data/settings.js";
 
 // Read-only GitHub tools for "github" targets. They only ever read the
 // authorized repository, through the REST API.
@@ -118,7 +119,7 @@ registerTool({
     required: ["query"],
   },
   run: async ({ query }, ctx) => {
-    if (!process.env.GITHUB_TOKEN) throw new Error("Code search needs GITHUB_TOKEN on the server. Use github_list_files and github_read_file instead.");
+    if (!(getToolApiSettings().githubToken || process.env.GITHUB_TOKEN)) throw new Error("Code search needs a GitHub token. Add one in Settings → AI provider → Tool integrations, or use github_list_files and github_read_file instead.");
     const { owner, repo } = repoOf(ctx);
     const q = `${String(query).slice(0, 200)} repo:${owner}/${repo}`;
     const data = await github("/search/code", { q, per_page: 30 }, ctx);

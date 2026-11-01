@@ -131,6 +131,7 @@ function AgentConsole({ profile }) {
   const [conversations, setConversations] = useState(null)
   const [opening, setOpening] = useState(false)
   const [task, setTask] = useState('')
+  const [planMode, setPlanMode] = useState(false)
   const [error, setError] = useState(null) // { message, action? }
   const [sending, setSending] = useState(false)
   const [answering, setAnswering] = useState(false)
@@ -444,6 +445,7 @@ function AgentConsole({ profile }) {
         task: submittedTask,
         attachments: imagePayload.map(({ dataUrl, mimeType }) => ({ dataUrl, mimeType })),
         conversationId: conversationId || undefined,
+        mode: planMode && imagePayload.length === 0 ? 'plan' : undefined,
       })
       setConversationId(run.conversationId)
       setConversationTarget({ type: selected.target.type, identifier: selected.target.identifier })
@@ -455,6 +457,8 @@ function AgentConsole({ profile }) {
         _id: run.id,
         conversationId: run.conversationId,
         status: run.status,
+        authorizationId: run.authorizationId,
+        supervisor: run.supervisor,
         task: submittedTask,
         steps: [],
         attachments: imagePayload,
@@ -463,6 +467,7 @@ function AgentConsole({ profile }) {
       setThread((t) => [...t, localRun])
       setLiveRun(localRun)
       setTask('')
+      setPlanMode(false)
       selectedAttachments.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl))
       replaceAttachments([])
       refreshConversations()
@@ -592,6 +597,8 @@ function AgentConsole({ profile }) {
       placeholder={placeholder}
       inputRef={inputRef}
       footer={busy && !sending ? 'The agent keeps working in the background. You can leave this page.' : null}
+      planMode={planMode}
+      onPlanModeChange={selected?.target?.type === 'local' ? setPlanMode : undefined}
     />
   )
 

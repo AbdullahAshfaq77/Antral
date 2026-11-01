@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require('electron')
+const { app, BrowserWindow, dialog, shell } = require('electron')
 const path = require('node:path')
 const { startServices, stopServices, PORTS } = require('./services.cjs')
 
@@ -72,18 +72,28 @@ const createWindow = async () => {
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
-    if (!isFirebaseAuthPopup(target)) return { action: 'deny' }
-    return {
-      action: 'allow',
-      overrideBrowserWindowOptions: {
-        autoHideMenuBar: true,
-        webPreferences: {
-          contextIsolation: true,
-          nodeIntegration: false,
-          sandbox: true,
+    if (isFirebaseAuthPopup(target)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          autoHideMenuBar: true,
+          webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+          },
         },
-      },
+      }
     }
+    try {
+      const destination = new URL(target)
+      if (['http:', 'https:'].includes(destination.protocol) && !destination.username && !destination.password) {
+        shell.openExternal(target).catch((error) => console.error('Could not open external link:', error))
+      }
+    } catch (error) {
+      console.error('Could not open invalid external link:', error)
+    }
+    return { action: 'deny' }
   })
   mainWindow.webContents.on('will-navigate', (event, target) => {
     if (new URL(target).origin !== origin) event.preventDefault()

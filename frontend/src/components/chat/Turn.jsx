@@ -8,10 +8,12 @@ import { Button, RiskBadge, Spinner } from '../ui/primitives.jsx'
 import { getRun } from '../../../utils/agentApi.js'
 import { fullDate, relativeTime } from '../../lib/format.js'
 import { ACTIVE } from '../../lib/runs.js'
+import SupervisorBoard from './SupervisorBoard.jsx'
 
 // "edit_file" -> sentence for the Always allow button.
 const describeRule = (rule) => {
   if (!rule) return null
+  if (rule.startsWith('verify_command:')) return 'Always allow configured project verification commands on this target'
   if (rule.startsWith('run_command:')) return `Always allow “${rule.slice(12)}” commands on this target`
   if (rule.startsWith('run_command_exact:')) return `Always allow this exact command on this target`
   if (rule.startsWith('launch:')) return `Always allow launching ${rule.slice(7)} on this target`
@@ -55,6 +57,9 @@ function activityLabel(step) {
       return 'Skipped an action that isn’t allowed'
     case 'error':
       return 'Handling an issue'
+    case 'provider_switch':
+    case 'degraded':
+      return step.content || (step.kind === 'degraded' ? 'Using a fallback model tier' : 'Switching AI providers')
     default:
       return null
   }
@@ -65,6 +70,32 @@ const activityList = (steps) =>
     .map(activityLabel)
     .filter(Boolean)
     .filter((label, index, labels) => label !== labels[index - 1])
+
+const failureMessageFor = (run) => {
+  if (run.attachments?.length) {
+    return "I couldn't process the image. Check that the configured AI model supports image input, then try again."
+  }
+  const error = run.error || ''
+  if (/model returned an empty response/i.test(error)) {
+    return 'The AI model returned an empty response. Please try again, or check your AI provider settings if this keeps happening.'
+  }
+  if (/model is unavailable for free|no longer available.*free/i.test(error)) {
+    return 'The selected OpenRouter model is no longer available on the free tier. Its saved selection has been updated; try sending your request again.'
+  }
+  if (/free-models-per-day|free model.{0,40}(daily|per day).{0,30}(limit|quota)|daily.{0,30}free model.{0,30}(limit|quota)/i.test(error)) {
+    return 'The OpenRouter free-model daily quota has been reached. Choose another configured provider or model in Settings → AI providers, or retry after the quota resets.'
+  }
+  if (/\b429\b|rate limit exceeded|too many requests/i.test(error)) {
+    return 'The AI provider is temporarily rate-limiting requests. Try another configured provider or wait before retrying.'
+  }
+  if (/401|403|invalid[_ ]api[_ ]key|key is invalid|authentication/i.test(error)) {
+    return 'The AI provider rejected its saved API key. Update and test the key in Settings → AI providers, then try again.'
+  }
+  if (/model.*(not found|unavailable)|unknown model/i.test(error)) {
+    return 'The AI provider could not find the selected model. Check its model ID in Settings → AI providers, test it, then try again.'
+  }
+  return 'I ran into a problem while completing that. Please try again.'
+}
 
 function Activity({ steps, status }) {
   const [open, setOpen] = useState(false)
@@ -85,6 +116,8 @@ function Activity({ steps, status }) {
         ? activityLabel(lastStep)
         : lastStep?.kind === 'tool_result'
           ? 'Checking the result'
+          : ['provider_switch', 'degraded'].includes(lastStep?.kind)
+            ? activityLabel(lastStep)
           : phases[phase % phases.length]
 
   return (
@@ -137,6 +170,8 @@ function ApprovalCard({ approval, onAnswer, busy }) {
       ? `- ${args.oldText ?? ''}\n+ ${args.newText ?? ''}`
       : approval.tool === 'write_file'
         ? args.content
+        : approval.tool === 'run_verify_command'
+          ? args.command
         : approval.tool === 'run_command'
           ? args.command
           : JSON.stringify(args, null, 2)
@@ -258,6 +293,7 @@ function Turn({ item, live, onAnswer, answering, onImageOpen }) {
 
   const finishedSteps = activityList(steps)
   const time = run.createdAt
+  const failureMessage = failureMessageFor(run)
 
   return (
     <li className="space-y-4">
@@ -296,19 +332,26 @@ function Turn({ item, live, onAnswer, answering, onImageOpen }) {
 
           <div className="response-enter min-w-0 max-w-full">
             {run.result && <Markdown text={run.result} />}
-            {run.error && !run.result && (
-              <div className="flex items-start gap-2.5 rounded-xl border border-rose-400/20 bg-rose-500/[0.06] px-3.5 py-3 text-sm text-rose-100/90">
-                <Icon name="alert" size={16} className="mt-0.5 text-rose-300" />
-                <span>
-                  {run.attachments?.length
-                    ? "I couldn't process the image. Check that the configured AI model supports image input, then try again."
-                    : 'I ran into a problem while completing that. Please try again.'}
+            {run.status === 'cancelled' && (
+              <div role="status" className="mt-3 flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3 text-sm">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/[0.06] text-neutral-400">
+                  <Icon name="stop" size={13} />
                 </span>
+                <div className="min-w-0">
+                  <p className="font-medium text-neutral-200">Run stopped</p>
+                  <p className="mt-0.5 text-xs leading-5 text-neutral-500">Stopped at your request. Send another message whenever you’re ready.</p>
+                </div>
               </div>
             )}
-            {!active && !run.result && !run.error && ['cancelled', 'interrupted'].includes(run.status) && (
+            {run.error && !run.result && run.status !== 'cancelled' && (
+              <div className="flex items-start gap-2.5 rounded-xl border border-rose-400/20 bg-rose-500/[0.06] px-3.5 py-3 text-sm text-rose-100/90">
+                <Icon name="alert" size={16} className="mt-0.5 text-rose-300" />
+                <span>{failureMessage}</span>
+              </div>
+            )}
+            {!active && !run.result && !run.error && run.status === 'interrupted' && (
               <p className="text-sm italic leading-7 text-neutral-500">
-                {run.status === 'cancelled' ? 'You stopped this run.' : 'This run was interrupted before it finished.'}
+                This run was interrupted before it finished.
               </p>
             )}
           </div>
@@ -316,6 +359,8 @@ function Turn({ item, live, onAnswer, answering, onImageOpen }) {
           {live?.status === 'awaiting_approval' && live.pendingApproval && (
             <ApprovalCard key={live.pendingApproval.id} approval={live.pendingApproval} onAnswer={onAnswer} busy={answering} />
           )}
+
+          {run.supervisor && <SupervisorBoard run={run} standaloneApproval={!live} />}
 
           {!active && (
             <div className="mt-2 flex items-center gap-1">

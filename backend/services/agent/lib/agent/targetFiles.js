@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import axios from "axios";
 import { resolveTargetPath } from "./pathGuard.js";
+import { getToolApiSettings } from "../../data/settings.js";
 
 // Reading files from whichever kind of target a run is on, so tools like the
 // dependency scanner work the same for a local folder and a GitHub repo.
@@ -17,6 +18,7 @@ export const parseGithubRepo = (identifier) => {
 // Read-only GitHub REST call. Uses GITHUB_TOKEN when set (higher rate limit,
 // private repos the token can read); public repos work without it.
 export const github = async (path, params = {}, { signal } = {}) => {
+  const githubToken = getToolApiSettings().githubToken || process.env.GITHUB_TOKEN;
   try {
     const { data } = await axios.get(`https://api.github.com${path}`, {
       params,
@@ -26,7 +28,7 @@ export const github = async (path, params = {}, { signal } = {}) => {
         Accept: "application/vnd.github+json",
         "User-Agent": "antral-agent",
         "X-GitHub-Api-Version": "2022-11-28",
-        ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
+        ...(githubToken ? { Authorization: `Bearer ${githubToken}` } : {}),
       },
     });
     return data;

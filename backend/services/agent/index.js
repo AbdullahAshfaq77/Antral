@@ -6,8 +6,6 @@ import consentRoutes from "./routes/consent.routes.js";
 import agentRoutes from "./routes/agent.routes.js";
 import { markInterruptedRuns } from "./lib/agent/orchestrator.js";
 import { LOCAL_COMPUTER_TARGET_ENABLED } from "./lib/policies.js";
-import { applyProviderConfig } from "./lib/agent/llm.js";
-import { getLlmConfig } from "./data/settings.js";
 
 const port = process.env.PORT;
 
@@ -47,9 +45,8 @@ app.use((err, _req, res, _next) => {
 const start = async () => {
   // Sessions and conversation memory now live in the shared local SQLite
   // database (opened on first use), so no Redis connection is needed.
-  // Apply the user's stored AI provider + key (desktop app) onto the env so the
-  // provider logic picks it up.
-  applyProviderConfig(getLlmConfig());
+  // User provider profiles are read from the local encrypted settings store
+  // when an agent run starts; provider API keys from .env are not used.
   await markInterruptedRuns().catch((e) => console.error("Could not mark interrupted runs:", e.message));
   const listening = () => {
     console.log(`agent service is running on port ${port}`);

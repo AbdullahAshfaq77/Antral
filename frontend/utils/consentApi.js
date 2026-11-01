@@ -32,6 +32,9 @@ export const getConsentStatus = () => request("/agent/consent/status");
 export const getLlmSettings = () => request("/agent/settings/llm");
 
 export const setLlmSettings = (body) => request("/agent/settings/llm", { method: "PUT", body });
+export const testLlmConnection = (body) => request("/agent/settings/llm/test", { method: "POST", body });
+export const getToolApiSettings = () => request("/agent/settings/integrations");
+export const setToolApiSettings = (integrations) => request("/agent/settings/integrations", { method: "PUT", body: { integrations } });
 
 export const acceptAccountPolicies = (versions) =>
   request("/agent/consent/account", { method: "POST", body: { versions } });

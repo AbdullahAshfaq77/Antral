@@ -37,3 +37,7 @@ service-account*.json
 
 # Dependencies and generated files
 node_modules/
+.data/
+dist-desktop*/
+sys.md
+.github/instructions/

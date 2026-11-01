@@ -86,7 +86,7 @@ export const SCOPES = [
     id: "launch_applications",
     label: "Find & open applications",
     description:
-      "Discover installed applications on this PC and open them, or open files and projects in them. Each launch asks for your approval.",
+      "Discover installed applications on this PC and open them, or open files and projects in them. In a desktop folder target, this permission allows application discovery and launch outside the folder; other file access remains folder-scoped. Each launch asks for your approval.",
     risk: "elevated",
     defaultOn: false,
   },
@@ -94,7 +94,7 @@ export const SCOPES = [
     id: "manage_processes",
     label: "View & close running programs",
     description:
-      "List running programs and close a specific one. Closing always asks first, tries a graceful close, and force-ends only with a second approval.",
+      "List running programs on this PC and close a specific one, including from a desktop folder target. Closing always asks first, tries a graceful close, and force-ends only with a fresh approval.",
     risk: "high",
     defaultOn: false,
   },

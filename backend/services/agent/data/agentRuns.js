@@ -134,6 +134,7 @@ const COLUMN = {
   contextTokensUsed: "context_tokens_used",
   continuedBy: "continued_by",
   task: "task",
+  toolsOffered: "tools_offered",
 };
 
 export const updateRun = (id, fields) => {
@@ -148,7 +149,7 @@ export const updateRun = (id, fields) => {
       vals.push(v == null ? null : (v instanceof Date ? v.getTime() : Number(v)));
     } else if (COLUMN[k]) {
       sets.push(`${COLUMN[k]} = ?`);
-      vals.push(v);
+      vals.push(k === "toolsOffered" ? JSON.stringify(v || []) : v);
     }
   }
   if (!sets.length) return;
@@ -180,9 +181,11 @@ export const appendStep = (runId, step) => {
 };
 
 // Runs that were executing when the process stopped can't resume.
-export const markInterrupted = () =>
-  db
-    .prepare(
-      "UPDATE agent_runs SET status = 'interrupted', pending_approval = NULL, error = ?, finished_at = ?, updated_at = ? WHERE status IN ('running','awaiting_approval')",
-    )
-    .run("The agent service restarted during this run.", nowMs(), nowMs());
+export const markInterrupted = () => {
+  const now = nowMs();
+  const result = db.prepare(
+    "UPDATE agent_runs SET status = 'interrupted', pending_approval = NULL, error = ?, finished_at = ?, updated_at = ? WHERE status IN ('running','awaiting_approval')",
+  ).run("The agent service restarted during this run.", now, now);
+  db.prepare("UPDATE supervisor_plans SET status = 'interrupted', updated_at = ? WHERE status = 'running'").run(now);
+  return result;
+};

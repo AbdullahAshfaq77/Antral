@@ -4,6 +4,7 @@ import { effectiveScopes } from "../policies.js";
 import { getTool } from "./tools/index.js";
 import { redactSecrets } from "./redact.js";
 import { requestApproval } from "./approvals.js";
+import { roleAllowsTool } from "./roles.js";
 
 const MAX_RESULT_CHARS = 30_000;
 
@@ -51,6 +52,29 @@ export const executeToolCall = async ({ name, args, run, ctx }) => {
 
   if (!tool || !run.toolsOffered.includes(name)) {
     return { ok: false, denied: true, content: `Tool "${name}" is not available in this run.`, durationMs: 0 };
+  }
+  if (run.roleConfig && !roleAllowsTool(run.roleConfig, name)) {
+    return { ok: false, denied: true, content: `Tool "${name}" is outside the active role's capabilities.`, durationMs: elapsed() };
+  }
+  if (["coder", "fixer"].includes(run.roleConfig?.id) && ["write_file", "edit_file", "make_directory"].includes(name)) {
+    return { ok: false, denied: true, content: `The ${run.roleConfig.id} role must use apply_task_patch for planned file changes.`, durationMs: elapsed() };
+  }
+  if (["coder", "fixer"].includes(run.roleConfig?.id) && name === "apply_task_patch") {
+    const requested = String(args?.path || "").replace(/\\/g, "/").replace(/^\.\//, "");
+    const allowed = run.roleAllowedFiles || [];
+    const matches = allowed.some((file) => file === requested);
+    if (!matches) return { ok: false, denied: true, content: `Coder may edit only files listed in the active task: ${allowed.join(", ") || "none"}.`, durationMs: elapsed() };
+  }
+  if (["coder", "fixer", "reviewer"].includes(run.roleConfig?.id) && name === "read_file") {
+    const requested = String(args?.path || "").replace(/\\/g, "/").replace(/^\.\//, "");
+    const allowed = run.roleAllowedFiles || [];
+    if (!allowed.includes(requested)) return { ok: false, denied: true, content: `This role may read only files declared in the task context: ${allowed.join(", ") || "none"}.`, durationMs: elapsed() };
+  }
+  if (run.roleConfig?.id === "memory-keeper" && ["write_file", "edit_file"].includes(name)) {
+    const path = String(args?.path || "").replace(/\\/g, "/").replace(/^\.\//, "");
+    if (!(path.toLowerCase() === "project.md" || /^repo-map\/.*(?:index|map).*(?:\.md|\.json|\.txt)?$/i.test(path))) {
+      return { ok: false, denied: true, content: "Memory keeper can write only PROJECT.md and repository map/index files.", durationMs: elapsed() };
+    }
   }
 
   const permission = { userUid: run.userUid, authorizationId: run.authorizationId, scope: tool.scope };
