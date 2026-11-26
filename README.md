@@ -472,7 +472,7 @@ Before contributing:
 5. Document new configuration, permissions, tools, and dependencies.
 6. Explain security implications when a change expands an agent's capabilities.
 
-For security-sensitive findings, use a responsible disclosure process rather than publishing exploitable details before maintainers have had an opportunity to respond.
+For security-sensitive findings, use the responsible disclosure process rather than publishing exploitable details before maintainers have had an opportunity to respond.
 
 ---
 
