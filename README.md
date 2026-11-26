@@ -288,7 +288,7 @@ Antral/
 └── config/
 ```
 
-**Important:** This is an illustrative structure, not a claim that these directories already exist. Replace it with the real repository tree before publishing the final documentation.
+**Important:** This is  illustrative structure, not a claim that these directories already exist. Replace it with the real repository tree before publishing the final documentation.
 
 ---
 
